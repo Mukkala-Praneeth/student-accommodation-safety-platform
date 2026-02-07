@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Home } from './pages/Home';
 import { Dashboard } from './pages/Dashboard';
@@ -12,6 +12,7 @@ import { Header } from './components/Header';
 import { Footer } from './components/Footer';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { AccommodationProvider } from './contexts/AccommodationContext';
+import ReportSafety from "./pages/ReportSafety";
 
 // Mock data for demonstration
 export interface User {
@@ -151,6 +152,24 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode; requiredRole?: strin
 };
 
 export function App() {
+  const [backendStatus, setBackendStatus] = useState<string>('Connecting...');
+
+  useEffect(() => {
+    const checkBackend = async () => {
+      try {
+        const response = await fetch('http://localhost:5000/api/test');
+        const data = await response.json();
+        setBackendStatus(data.message);
+        console.log('Backend Response:', data.message);
+      } catch (error) {
+        setBackendStatus('Error connecting to backend');
+        console.error('Backend connection error:', error);
+      }
+    };
+
+    checkBackend();
+  }, []);
+
   return (
     <AuthProvider>
       <AccommodationProvider initialAccommodations={mockAccommodations}>
@@ -160,6 +179,7 @@ export function App() {
             <main className="flex-grow">
               <Routes>
                 <Route path="/" element={<Home />} />
+                <Route path="/report" element={<ReportSafety />} />
                 <Route 
                   path="/dashboard" 
                   element={
@@ -198,6 +218,19 @@ export function App() {
               </Routes>
             </main>
             <Footer />
+            <div style={{ 
+              position: "fixed", 
+              bottom: 10, 
+              right: 10, 
+              fontSize: 12, 
+              backgroundColor: 'rgba(0,0,0,0.7)', 
+              color: 'white', 
+              padding: '4px 8px', 
+              borderRadius: '4px',
+              zIndex: 9999
+            }}>
+              Backend Status: {backendStatus}
+            </div>
           </div>
         </Router>
       </AccommodationProvider>
