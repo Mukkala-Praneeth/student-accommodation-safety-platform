@@ -31,43 +31,49 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, []);
 
   const login = async (email: string, password: string): Promise<void> => {
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    // Mock users for demo
-    const mockUsers: User[] = [
-      { id: '1', name: 'John Student', email: 'student@example.com', role: 'student' },
-      { id: '2', name: 'Jane Owner', email: 'owner@example.com', role: 'owner' },
-      { id: '3', name: 'Admin User', email: 'admin@example.com', role: 'admin' }
-    ];
-    
-    const foundUser = mockUsers.find(u => u.email === email);
-    if (foundUser) {
-      setUser(foundUser);
-      localStorage.setItem('user', JSON.stringify(foundUser));
+    const res = await fetch("http://localhost:5000/api/auth/login", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ email, password }),
+    });
+
+    const data = await res.json();
+
+    if (res.ok) {
+      setUser(data.user);
+      localStorage.setItem("user", JSON.stringify(data.user));
+      localStorage.setItem("token", data.token);
     } else {
-      throw new Error('Invalid credentials');
+      throw new Error(data.message || "Invalid credentials");
     }
   };
 
   const register = async (name: string, email: string, password: string, role: 'student' | 'owner'): Promise<void> => {
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    const newUser: User = {
-      id: Date.now().toString(),
-      name,
-      email,
-      role
-    };
-    
-    setUser(newUser);
-    localStorage.setItem('user', JSON.stringify(newUser));
+    const res = await fetch("http://localhost:5000/api/auth/signup", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ name, email, password, role }),
+    });
+
+    const data = await res.json();
+    console.log("Signup Response:", data);
+
+    if (res.ok && data.success) {
+      // Automatically login after signup
+      await login(email, password);
+    } else {
+      throw new Error(data.message || "Registration failed");
+    }
   };
 
   const logout = () => {
     setUser(null);
-    localStorage.removeItem('user');
+    localStorage.removeItem("user");
+    localStorage.removeItem("token");
   };
 
   return (

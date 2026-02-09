@@ -22,6 +22,7 @@ export default function ReportSafety() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "Authorization": "Bearer " + localStorage.getItem("token") // ⭐ Add auth token
         },
         body: JSON.stringify(formData),
       });

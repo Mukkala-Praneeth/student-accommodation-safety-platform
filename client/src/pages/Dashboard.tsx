@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useAccommodation } from '../contexts/AccommodationContext';
@@ -9,12 +9,37 @@ export const Dashboard: React.FC = () => {
   const { user } = useAuth();
   const { accommodations } = useAccommodation();
   const [activeTab, setActiveTab] = useState<'overview' | 'reports' | 'alerts'>('overview');
+  const [reports, setReports] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  // Get recent reports
-  const recentReports = accommodations
-    .flatMap(acc => acc.reports)
-    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-    .slice(0, 5);
+  const fetchReports = async () => {
+    try {
+      const res = await fetch("http://localhost:5000/api/reports");
+      const data = await res.json();
+      if (data.success) {
+        setReports(data.data);
+      } else {
+        setError("Failed to load reports");
+      }
+    } catch (err) {
+      setError("Server error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchReports();
+  }, []);
+
+  if (loading) return <h2 className="text-center mt-10 text-xl font-semibold">Loading reports...</h2>;
+  if (error) return <h2 className="text-center mt-10 text-xl font-semibold text-red-600">{error}</h2>;
+  
+
+
+  // Get recent reports from state
+  const recentReports = reports.slice(0, 5);
 
   // Get safety alerts
   const safetyAlerts = accommodations
@@ -105,26 +130,21 @@ export const Dashboard: React.FC = () => {
       {/* Recent Activity */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <div className="bg-white p-6 rounded-lg shadow">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">Recent Safety Reports</h2>
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">Safety Reports</h2>
           <div className="space-y-4">
-            {recentReports.map(report => (
-              <div key={report.id} className="border-b border-gray-200 pb-4 last:border-b-0">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h3 className="font-medium text-gray-900">{report.category}</h3>
-                    <p className="text-sm text-gray-600 mt-1">{report.description.substring(0, 100)}...</p>
-                    <p className="text-xs text-gray-500 mt-2">
-                      {formatDistanceToNow(new Date(report.timestamp))} ago
-                    </p>
-                  </div>
-                  <span className="px-2 py-1 text-xs font-medium bg-gray-100 text-gray-800 rounded">
-                    {report.status === 'under_review' ? 'Under Review' : 'Active'}
-                  </span>
+            {reports.length === 0 ? (
+              <p className="text-gray-500 text-center py-4">No reports yet</p>
+            ) : (
+              reports.map((report) => (
+                <div key={report._id} className="border-b border-gray-200 pb-4 last:border-b-0">
+                  <h3 className="font-medium text-gray-900">{report.accommodationName}</h3>
+                  <p className="text-sm text-gray-600 mt-1">Issue: {report.issueType}</p>
+                  <p className="text-sm text-gray-600">Description: {report.description}</p>
+                  <p className="text-xs text-gray-500 mt-2">
+                    Date: {new Date(report.createdAt).toLocaleString()}
+                  </p>
                 </div>
-              </div>
-            ))}
-            {recentReports.length === 0 && (
-              <p className="text-gray-500 text-center py-4">No recent reports</p>
+              ))
             )}
           </div>
         </div>
