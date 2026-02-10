@@ -21,6 +21,13 @@ const userSchema = new mongoose.Schema({
     enum: ["student", "owner", "admin"],
     default: "student",
   },
+  phone: {
+    type: String,
+  },
+  isBanned: {
+    type: Boolean,
+    default: false
+  }
 }, { timestamps: true });
 
 module.exports = mongoose.model("User", userSchema);

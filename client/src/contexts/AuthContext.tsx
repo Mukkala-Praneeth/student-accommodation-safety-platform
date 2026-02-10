@@ -10,7 +10,8 @@ interface User {
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  // return the logged in user for callers that need it
+  login: (email: string, password: string) => Promise<User | null>;
   register: (name: string, email: string, password: string, role: 'student' | 'owner') => Promise<void>;
   logout: () => void;
 }
@@ -23,14 +24,22 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   useEffect(() => {
     // Check if user is logged in (from localStorage)
-    const storedUser = localStorage.getItem('user');
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
+    try {
+      const storedUser = localStorage.getItem('user');
+      if (storedUser) {
+        setUser(JSON.parse(storedUser));
+      }
+    } catch (e) {
+      // Malformed JSON in storage - log error but do not wipe tokens automatically
+      // Clearing tokens here can cause unexpected logouts during navigation.
+      console.error('Error parsing stored user from localStorage:', e);
+      setUser(null);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, []);
 
-  const login = async (email: string, password: string): Promise<void> => {
+  const login = async (email: string, password: string): Promise<User | null> => {
     const res = await fetch("http://localhost:5000/api/auth/login", {
       method: "POST",
       headers: {
@@ -45,6 +54,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setUser(data.user);
       localStorage.setItem("user", JSON.stringify(data.user));
       localStorage.setItem("token", data.token);
+      return data.user;
     } else {
       throw new Error(data.message || "Invalid credentials");
     }
@@ -71,9 +81,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const logout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
     setUser(null);
-    localStorage.removeItem("user");
-    localStorage.removeItem("token");
+    // Redirect to root so UI updates consistently across roles
+    window.location.href = '/';
   };
 
   return (

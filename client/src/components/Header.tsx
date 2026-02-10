@@ -32,17 +32,41 @@ export const Header: React.FC = () => {
               <FiList className="h-4 w-4" />
               <span>Accommodations</span>
             </Link>
-            {user && (
-              <Link to="/dashboard" className="text-gray-700 hover:text-blue-600 flex items-center space-x-1">
-                <FiUser className="h-4 w-4" />
+
+            {/* Show when logged in as STUDENT */}
+            {user && user.role === 'student' && (
+              <>
+                <Link to="/dashboard" className="text-gray-700 hover:text-blue-600 flex items-center space-x-1">
+                  <FiUser className="h-4 w-4" />
+                  <span>Dashboard</span>
+                </Link>
+                <Link to="/my-reports" className="text-gray-700 hover:text-blue-600 flex items-center space-x-1">
+                  <FiList className="h-4 w-4" />
+                  <span>My Reports</span>
+                </Link>
+              </>
+            )}
+
+            {/* Show when logged in as OWNER */}
+            {user && user.role === 'owner' && (
+              <Link to="/owner/dashboard" className="text-gray-700 hover:text-blue-600 flex items-center space-x-1">
+                <FiList className="h-4 w-4" />
                 <span>Dashboard</span>
               </Link>
             )}
-            {user?.role === 'admin' && (
-              <Link to="/admin" className="text-gray-700 hover:text-blue-600 flex items-center space-x-1">
-                <FiAlertTriangle className="h-4 w-4" />
-                <span>Admin</span>
-              </Link>
+
+            {/* Show when logged in as ADMIN */}
+            {user && user.role === 'admin' && (
+              <>
+                <Link to="/admin" className="text-gray-700 hover:text-blue-600 flex items-center space-x-1">
+                  <FiAlertTriangle className="h-4 w-4" />
+                  <span>Admin Panel</span>
+                </Link>
+                <Link to="/dashboard" className="text-gray-700 hover:text-blue-600 flex items-center space-x-1">
+                  <FiList className="h-4 w-4" />
+                  <span>View Reports</span>
+                </Link>
+              </>
             )}
           </nav>
 

@@ -5,14 +5,19 @@ import { Dashboard } from './pages/Dashboard';
 import { AccommodationList } from './pages/AccommodationList';
 import { AccommodationDetail } from './pages/AccommodationDetail';
 import { ReportIncident } from './pages/ReportIncident';
-import { AdminPanel } from './pages/AdminPanel';
+
 import { Login } from './pages/Login';
 import { Register } from './pages/Register';
 import { Header } from './components/Header';
 import { Footer } from './components/Footer';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { AccommodationProvider } from './contexts/AccommodationContext';
-import ReportSafety from "./pages/ReportSafety";
+import MyReports from './pages/MyReports';
+import AdminDashboard from './pages/AdminDashboard';
+import OwnerRegister from './pages/OwnerRegister';
+import OwnerLogin from './pages/OwnerLogin';
+import OwnerDashboard from './pages/OwnerDashboard';
+
 
 // Mock data for demonstration
 export interface User {
@@ -179,7 +184,6 @@ export function App() {
             <main className="flex-grow">
               <Routes>
                 <Route path="/" element={<Home />} />
-                <Route path="/report" element={<ReportSafety />} />
                 <Route 
                   path="/dashboard" 
                   element={
@@ -204,16 +208,20 @@ export function App() {
                     </ProtectedRoute>
                   } 
                 />
-                <Route 
-                  path="/admin" 
+                <Route path="/my-reports" element={<MyReports />} />
+                <Route
+                  path="/admin"
                   element={
                     <ProtectedRoute requiredRole="admin">
-                      <AdminPanel />
+                      <AdminDashboard />
                     </ProtectedRoute>
-                  } 
+                  }
                 />
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
+                <Route path="/owner/register" element={<OwnerRegister />} />
+                <Route path="/owner/login" element={<OwnerLogin />} />
+                <Route path="/owner/dashboard" element={<OwnerDashboard />} />
                 <Route path="*" element={<Navigate to="/" />} />
               </Routes>
             </main>

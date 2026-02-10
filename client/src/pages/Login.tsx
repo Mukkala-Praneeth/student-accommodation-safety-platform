@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { FiLogIn, FiMail, FiLock } from 'react-icons/fi';
 
@@ -18,10 +18,26 @@ export const Login: React.FC = () => {
     setLoading(true);
 
     try {
-      await login(email, password);
-      navigate('/dashboard');
-    } catch (err) {
-      setError('Invalid email or password');
+      // Use AuthContext.login so context state is updated consistently
+      const loggedUser = await login(email, password);
+
+      // Prefer returned user, fallback to localStorage
+      const user = loggedUser || JSON.parse(localStorage.getItem('user') || 'null');
+
+      if (!user) {
+        setError('Login failed');
+        return;
+      }
+
+      if (user.role === 'admin') {
+        navigate('/admin');
+      } else if (user.role === 'owner') {
+        navigate('/owner/dashboard');
+      } else {
+        navigate('/dashboard');
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Error connecting to server');
     } finally {
       setLoading(false);
     }
@@ -101,6 +117,11 @@ export const Login: React.FC = () => {
             </button>
           </div>
         </form>
+        <div className="auth-footer">
+          <p>Don't have an account? <Link to="/register">Register as Student</Link></p>
+          <div className="divider">or</div>
+          <p>Are you an accommodation owner? <Link to="/owner/login">Owner Login</Link></p>
+        </div>
       </div>
     </div>
   );

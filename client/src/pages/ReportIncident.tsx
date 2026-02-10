@@ -1,19 +1,14 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAccommodation } from '../contexts/AccommodationContext';
-import { useAuth } from '../contexts/AuthContext';
 import { FiUpload, FiAlertTriangle, FiHome, FiDroplet, FiUser } from 'react-icons/fi';
 
 export const ReportIncident: React.FC = () => {
   const navigate = useNavigate();
-  const { accommodations, addReport } = useAccommodation();
-  const { user } = useAuth();
   
   const [formData, setFormData] = useState({
-    accommodationId: '',
-    category: 'Security' as 'Food' | 'Water' | 'Hygiene' | 'Security' | 'Infrastructure',
+    accommodationName: '',
+    issueType: 'Security' as 'Food Safety' | 'Water Quality' | 'Hygiene' | 'Security' | 'Infrastructure',
     description: '',
-    imageUrl: ''
   });
   
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -24,44 +19,62 @@ export const ReportIncident: React.FC = () => {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      // In a real app, this would upload to a server
-      // For demo, we'll just store the filename
-      setFormData(prev => ({ ...prev, imageUrl: file.name }));
-    }
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.accommodationId || !formData.description.trim()) {
+    
+    if (!formData.accommodationName || !formData.description.trim()) {
+      alert("Please fill in all fields");
+      return;
+    }
+
+    const token = localStorage.getItem("token");
+    if (!token) {
+      alert("Please login first");
+      navigate("/login");
       return;
     }
 
     setIsSubmitting(true);
     
+    console.log("=== SUBMITTING REPORT ===");
+    console.log("formData:", formData);
+
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      addReport(formData.accommodationId, {
-        accommodationId: formData.accommodationId,
-        category: formData.category,
-        description: formData.description,
-        imageUrl: formData.imageUrl || undefined,
-        status: 'active'
+      const res = await fetch("http://localhost:5000/api/reports", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer " + token
+        },
+        body: JSON.stringify(formData),
       });
-      
-      setSubmitSuccess(true);
-      setTimeout(() => {
-        navigate('/dashboard');
-      }, 2000);
+
+      console.log("Response status:", res.status);
+      const data = await res.json();
+      console.log("Response data:", data);
+
+      if (data.success) {
+        setSubmitSuccess(true);
+        setTimeout(() => {
+          navigate('/my-reports');
+        }, 2000);
+      } else {
+        alert(data.message || "Failed to submit report");
+      }
     } catch (error) {
       console.error('Error submitting report:', error);
+      alert("Error submitting report");
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const categoryMap: { [key: string]: string } = {
+    'Security': 'Security',
+    'Infrastructure': 'Infrastructure', 
+    'Water': 'Water Quality',
+    'Food': 'Food Safety',
+    'Hygiene': 'Hygiene'
   };
 
   return (
@@ -86,36 +99,31 @@ export const ReportIncident: React.FC = () => {
               </svg>
             </div>
             <h2 className="text-xl font-semibold text-gray-900 mb-2">Report Submitted Successfully!</h2>
-            <p className="text-gray-600">Your safety report has been recorded. Thank you for helping keep students safe.</p>
+            <p className="text-gray-600">Your safety report has been recorded. Redirecting to My Reports...</p>
           </div>
         ) : (
           <form onSubmit={handleSubmit}>
             <div className="space-y-6">
-              {/* Accommodation Selection */}
+              {/* Accommodation Name Input */}
               <div>
-                <label htmlFor="accommodationId" className="block text-sm font-medium text-gray-700 mb-2">
-                  Select Accommodation
+                <label htmlFor="accommodationName" className="block text-sm font-medium text-gray-700 mb-2">
+                  Accommodation Name
                 </label>
-                <select
-                  id="accommodationId"
-                  name="accommodationId"
-                  value={formData.accommodationId}
+                <input
+                  type="text"
+                  id="accommodationName"
+                  name="accommodationName"
+                  value={formData.accommodationName}
                   onChange={handleInputChange}
+                  placeholder="Enter accommodation name (e.g., Sunrise PG, XYZ Hostel)"
                   className="w-full p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   required
-                >
-                  <option value="">Choose an accommodation</option>
-                  {accommodations.map(acc => (
-                    <option key={acc.id} value={acc.id}>
-                      {acc.name} - {acc.location}
-                    </option>
-                  ))}
-                </select>
+                />
               </div>
 
               {/* Category Selection */}
               <div>
-                <label htmlFor="category" className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
                   Incident Category
                 </label>
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
@@ -123,9 +131,9 @@ export const ReportIncident: React.FC = () => {
                     <button
                       key={category}
                       type="button"
-                      onClick={() => setFormData(prev => ({ ...prev, category }))}
+                      onClick={() => setFormData(prev => ({ ...prev, issueType: categoryMap[category] as any }))}
                       className={`p-3 border rounded-md flex flex-col items-center space-y-2 transition-colors ${
-                        formData.category === category
+                        formData.issueType === categoryMap[category]
                           ? 'border-blue-600 bg-blue-50 text-blue-600'
                           : 'border-gray-300 hover:border-gray-400 text-gray-700'
                       }`}
@@ -156,33 +164,6 @@ export const ReportIncident: React.FC = () => {
                   className="w-full p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   required
                 />
-              </div>
-
-              {/* Evidence Upload */}
-              <div>
-                <label htmlFor="evidence" className="block text-sm font-medium text-gray-700 mb-2">
-                  Upload Evidence (Optional)
-                </label>
-                <div className="flex items-center">
-                  <label className="flex items-center px-4 py-2 bg-white border border-gray-300 rounded-md cursor-pointer hover:bg-gray-50">
-                    <FiUpload className="mr-2" />
-                    <span>Choose File</span>
-                    <input
-                      type="file"
-                      id="evidence"
-                      name="evidence"
-                      accept="image/*"
-                      onChange={handleFileUpload}
-                      className="hidden"
-                    />
-                  </label>
-                  {formData.imageUrl && (
-                    <span className="ml-3 text-sm text-gray-600">{formData.imageUrl}</span>
-                  )}
-                </div>
-                <p className="mt-1 text-sm text-gray-500">
-                  Upload photos or documents that support your report. Files will be securely stored.
-                </p>
               </div>
 
               {/* Submit Button */}
