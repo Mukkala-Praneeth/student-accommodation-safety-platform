@@ -1,6 +1,12 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FiUpload, FiAlertTriangle, FiHome, FiDroplet, FiUser } from 'react-icons/fi';
+import { ImageUpload } from '../components/ImageUpload';
+
+interface Image {
+  url: string;
+  publicId: string;
+}
 
 export const ReportIncident: React.FC = () => {
   const navigate = useNavigate();
@@ -11,6 +17,7 @@ export const ReportIncident: React.FC = () => {
     description: '',
   });
   
+  const [uploadedImages, setUploadedImages] = useState<Image[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
 
@@ -36,9 +43,6 @@ export const ReportIncident: React.FC = () => {
 
     setIsSubmitting(true);
     
-    console.log("=== SUBMITTING REPORT ===");
-    console.log("formData:", formData);
-
     try {
       const res = await fetch("http://localhost:5000/api/reports", {
         method: "POST",
@@ -46,15 +50,14 @@ export const ReportIncident: React.FC = () => {
           "Content-Type": "application/json",
           "Authorization": "Bearer " + token
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({ ...formData, images: uploadedImages }),
       });
 
-      console.log("Response status:", res.status);
       const data = await res.json();
-      console.log("Response data:", data);
 
       if (data.success) {
         setSubmitSuccess(true);
+        setUploadedImages([]);
         setTimeout(() => {
           navigate('/my-reports');
         }, 2000);
@@ -62,7 +65,6 @@ export const ReportIncident: React.FC = () => {
         alert(data.message || "Failed to submit report");
       }
     } catch (error) {
-      console.error('Error submitting report:', error);
       alert("Error submitting report");
     } finally {
       setIsSubmitting(false);
@@ -165,6 +167,12 @@ export const ReportIncident: React.FC = () => {
                   required
                 />
               </div>
+
+              {/* Image Upload */}
+              <ImageUpload 
+                onImagesChange={setUploadedImages} 
+                uploadedImages={uploadedImages}
+              />
 
               {/* Submit Button */}
               <div className="flex justify-end">

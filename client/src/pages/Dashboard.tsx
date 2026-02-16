@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useAccommodation } from '../contexts/AccommodationContext';
 import { FiAlertTriangle, FiShield, FiFileText, FiMap, FiTrendingUp, FiClock } from 'react-icons/fi';
 import { formatDistanceToNow } from 'date-fns';
+import UpvoteButton from '../components/UpvoteButton';
 
 export const Dashboard: React.FC = () => {
   const { user } = useAuth();
@@ -12,6 +13,19 @@ export const Dashboard: React.FC = () => {
   const [reports, setReports] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [currentUserId, setCurrentUserId] = useState<string>('');
+
+  useEffect(() => {
+    try {
+      const token = localStorage.getItem('token');
+      if (token) {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        setCurrentUserId(payload.user?.id || payload.id || payload.userId || '');
+      }
+    } catch {
+      setCurrentUserId('');
+    }
+  }, []);
 
   const fetchReports = async () => {
     try {
@@ -140,9 +154,19 @@ export const Dashboard: React.FC = () => {
                   <h3 className="font-medium text-gray-900">{report.accommodationName}</h3>
                   <p className="text-sm text-gray-600 mt-1">Issue: {report.issueType}</p>
                   <p className="text-sm text-gray-600">Description: {report.description}</p>
-                  <p className="text-xs text-gray-500 mt-2">
-                    Date: {new Date(report.createdAt).toLocaleString()}
-                  </p>
+                  <div className="flex justify-between items-center mt-2">
+                    <p className="text-xs text-gray-500">
+                      Date: {new Date(report.createdAt).toLocaleString()}
+                    </p>
+                    {currentUserId && (
+                      <UpvoteButton
+                        reportId={report._id}
+                        initialUpvotes={report.upvotes || 0}
+                        initialHasUpvoted={(report.upvotedBy || []).includes(currentUserId)}
+                        isOwnReport={(report.user === currentUserId) || (report.user?._id === currentUserId)}
+                      />
+                    )}
+                  </div>
                 </div>
               ))
             )}

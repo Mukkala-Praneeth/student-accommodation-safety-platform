@@ -45,15 +45,7 @@ export default function OwnerRegister() {
       const data = await res.json();
 
       if (data.success) {
-        // Save token/user and update AuthContext by performing a login
-        localStorage.setItem('token', data.token);
-        localStorage.setItem('user', JSON.stringify(data.user));
-        try {
-          await login(formData.email, formData.password);
-        } catch (err) {
-          // If login fails, still navigate to owner dashboard since backend returned token
-          console.error('Auto-login after register failed:', err);
-        }
+        await login(formData.email, formData.password);
         alert('Registration successful!');
         navigate('/owner/dashboard');
       } else {

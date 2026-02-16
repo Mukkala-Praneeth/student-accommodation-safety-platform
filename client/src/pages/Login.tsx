@@ -18,26 +18,28 @@ export const Login: React.FC = () => {
     setLoading(true);
 
     try {
-      // Use AuthContext.login so context state is updated consistently
-      const loggedUser = await login(email, password);
+      // Use AuthContext.login so context updates for the whole app
+      const loggedInUser = await login(email, password);
 
-      // Prefer returned user, fallback to localStorage
-      const user = loggedUser || JSON.parse(localStorage.getItem('user') || 'null');
-
-      if (!user) {
+      // Get user from context after login
+      if (!loggedInUser) {
         setError('Login failed');
         return;
       }
 
-      if (user.role === 'admin') {
+      if (loggedInUser.role === 'owner'){
+        setError('This login is for students only. Please use the Owner Portal.');
+        return;
+      }
+
+      // Role-based redirect
+      if (loggedInUser.role === 'admin'){
         navigate('/admin');
-      } else if (user.role === 'owner') {
-        navigate('/owner/dashboard');
       } else {
-        navigate('/dashboard');
+        navigate('/dashboard'); // student dashboard
       }
     } catch (err: any) {
-      setError(err?.message || 'Error connecting to server');
+      setError(err.message || 'Error connecting to server');
     } finally {
       setLoading(false);
     }
@@ -60,7 +62,7 @@ export const Login: React.FC = () => {
             </a>
           </p>
         </div>
-        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+        <form className="mt-8 space-y-6 flex flex-col" onSubmit={handleSubmit}>
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded">
               {error}
@@ -107,6 +109,10 @@ export const Login: React.FC = () => {
             </div>
           </div>
 
+          <div className="auth-footer">
+            <p>Are you an accommodation owner? <Link to="/owner/login">Owner Login</Link></p>
+          </div>
+
           <div>
             <button
               type="submit"
@@ -117,11 +123,6 @@ export const Login: React.FC = () => {
             </button>
           </div>
         </form>
-        <div className="auth-footer">
-          <p>Don't have an account? <Link to="/register">Register as Student</Link></p>
-          <div className="divider">or</div>
-          <p>Are you an accommodation owner? <Link to="/owner/login">Owner Login</Link></p>
-        </div>
       </div>
     </div>
   );

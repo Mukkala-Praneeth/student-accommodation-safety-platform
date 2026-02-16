@@ -17,6 +17,7 @@ import AdminDashboard from './pages/AdminDashboard';
 import OwnerRegister from './pages/OwnerRegister';
 import OwnerLogin from './pages/OwnerLogin';
 import OwnerDashboard from './pages/OwnerDashboard';
+import Profile from './pages/Profile';
 
 
 // Mock data for demonstration
@@ -34,7 +35,7 @@ export interface Report {
   userName: string;
   category: 'Food' | 'Water' | 'Hygiene' | 'Security' | 'Infrastructure';
   description: string;
-  imageUrl?: string;
+  images?: Array<{ url: string; publicId?: string }>;
   timestamp: string;
   status: 'active' | 'under_review' | 'resolved';
 }
@@ -208,7 +209,14 @@ export function App() {
                     </ProtectedRoute>
                   } 
                 />
-                <Route path="/my-reports" element={<MyReports />} />
+                <Route 
+                  path="/my-reports" 
+                  element={
+                    <ProtectedRoute>
+                      <MyReports />
+                    </ProtectedRoute>
+                  } 
+                />
                 <Route
                   path="/admin"
                   element={
@@ -221,7 +229,15 @@ export function App() {
                 <Route path="/register" element={<Register />} />
                 <Route path="/owner/register" element={<OwnerRegister />} />
                 <Route path="/owner/login" element={<OwnerLogin />} />
-                <Route path="/owner/dashboard" element={<OwnerDashboard />} />
+                <Route path="/profile" element={<Profile />} />
+                <Route 
+                  path="/owner/dashboard" 
+                  element={
+                    <ProtectedRoute requiredRole="owner">
+                      <OwnerDashboard />
+                    </ProtectedRoute>
+                  } 
+                />
                 <Route path="*" element={<Navigate to="/" />} />
               </Routes>
             </main>

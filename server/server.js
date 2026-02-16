@@ -3,6 +3,7 @@ console.log("JWT_SECRET:", process.env.JWT_SECRET);
 const mongoose = require("mongoose");
 const express = require("express");
 const cors = require("cors");
+const path = require("path");
 const Report = require("./models/Report");
 const authRoutes = require("./routes/auth");
 const authMiddleware = require("./middleware/authMiddleware");
@@ -11,11 +12,13 @@ const ownerMiddleware = require('./middleware/ownerMiddleware');
 const User = require('./models/User');
 const Accommodation = require('./models/Accommodation');
 const CounterReport = require('./models/CounterReport');
+const { cloudinary, upload } = require('./config/cloudinary');
 
 const app = express();
 
 app.use(cors());
 app.use(express.json());
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use("/api/auth", authRoutes);
 
 app.get("/", (req, res) => {
@@ -26,16 +29,79 @@ app.get("/api/test", (req, res) => {
   res.json({ message: "Backend API working" });
 });
 
-// IMPORTANT: my-reports MUST come BEFORE /api/reports
+// ============ IMAGE UPLOAD ROUTES ============
+
+// Upload images
+app.post('/api/upload', authMiddleware, upload.array('images', 5), (req, res) => {
+  try {
+    console.log('[Upload] Received upload request');
+    console.log('[Upload] Files count:', req.files ? req.files.length : 0);
+    
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ success: false, message: 'No files uploaded' });
+    }
+
+    const uploadedImages = req.files.map(file => {
+      console.log('[Upload] Processing file:', file.filename);
+      return {
+        url: file.path,
+        publicId: file.filename
+      };
+    });
+
+    console.log('[Upload] Uploaded images:', uploadedImages);
+
+    res.json({
+      success: true,
+      message: 'Images uploaded successfully',
+      data: uploadedImages
+    });
+  } catch (error) {
+    console.error('[Upload] Error:', error);
+    res.status(500).json({ success: false, message: 'Error uploading images', error: error.message });
+  }
+});
+
+// Delete image
+app.delete('/api/upload/:publicId', authMiddleware, async (req, res) => {
+  try {
+    const { publicId } = req.params;
+
+    // Destroy the image from Cloudinary
+    const result = await cloudinary.uploader.destroy(publicId);
+
+    if (result.result !== 'ok') {
+      return res.status(400).json({ success: false, message: 'Error deleting image from cloud' });
+    }
+
+    res.json({ success: true, message: 'Image deleted successfully' });
+  } catch (error) {
+    console.error('Delete error:', error);
+    res.status(500).json({ success: false, message: 'Error deleting image', error: error.message });
+  }
+});
+
+// ============ REPORT ROUTES ============
 app.get('/api/reports/my-reports', authMiddleware, async (req, res) => {
   try {
-    console.log('=== MY REPORTS DEBUG ===');
-    console.log('req.user:', req.user);
-    const userReports = await Report.find({ user: req.user.id }).sort({ createdAt: -1 });
-    console.log('Found reports:', userReports.length);
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    const userReports = await Report.find({ user: req.user.id })
+      .select('accommodationName issueType description images createdAt status upvotes upvotedBy user')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    const total = await Report.countDocuments({ user: req.user.id });
+
     res.json({
       success: true,
       count: userReports.length,
+      total,
+      pages: Math.ceil(total / limit),
+      currentPage: page,
       data: userReports
     });
   } catch (error) {
@@ -70,29 +136,53 @@ app.get('/api/reports', async (req, res) => {
 // POST new report
 app.post('/api/reports', authMiddleware, async (req, res) => {
   try {
-    console.log('=== NEW REPORT SUBMIT ===');
+    console.log('=== NEW REPORT SUBMISSION ===');
     console.log('req.user:', req.user);
     console.log('req.body:', req.body);
 
-    const { accommodationName, issueType, description } = req.body;
+    const { accommodationName, issueType, description, images } = req.body;
+
+    // Validate required fields
+    if (!accommodationName || !issueType || !description) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required fields'
+      });
+    }
+
+    // Validate and filter images
+    let validatedImages = [];
+    if (images && Array.isArray(images)) {
+      validatedImages = images.filter(img => img && img.url && img.publicId);
+      console.log('Validated images:', validatedImages.length, 'of', images.length);
+    }
+
+    console.log('Creating report with:', {
+      accommodationName,
+      issueType,
+      description,
+      imageCount: validatedImages.length,
+      userId: req.user.id
+    });
 
     const newReport = new Report({
       accommodationName,
       issueType,
       description,
+      images: validatedImages,
       user: req.user.id
     });
 
     const saved = await newReport.save();
-    console.log('Report saved! ID:', saved._id);
+    console.log('Report saved successfully! ID:', saved._id);
 
     res.status(201).json({
       success: true,
-      message: 'Report saved successfully',
+      message: 'Report submitted successfully',
       data: saved
     });
   } catch (error) {
-    console.error('SAVE ERROR:', error.message);
+    console.error('SAVE ERROR:', error);
     res.status(500).json({
       success: false,
       message: 'Error saving report',
@@ -105,27 +195,53 @@ app.post('/api/reports', authMiddleware, async (req, res) => {
 app.put('/api/reports/:id', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
-    const { accommodationName, issueType, description } = req.body;
+    const { accommodationName, issueType, description, images } = req.body;
+
+    console.log('=== UPDATE REPORT ===');
+    console.log('Report ID:', id);
+    console.log('User ID:', req.user.id);
+    console.log('Updated data:', { accommodationName, issueType, description, images });
 
     const report = await Report.findById(id);
 
     if (!report) {
-      return res.status(404).json({ success: false, message: 'Report not found' });
+      return res.status(404).json({
+        success: false,
+        message: 'Report not found'
+      });
     }
 
     if (report.user.toString() !== req.user.id) {
-      return res.status(403).json({ success: false, message: 'You can only edit your own reports' });
+      return res.status(403).json({
+        success: false,
+        message: 'You can only edit your own reports'
+      });
     }
 
+    // Update fields
     report.accommodationName = accommodationName;
     report.issueType = issueType;
     report.description = description;
 
+    // Update images if provided
+    if (images !== undefined) {
+      report.images = images;
+    }
+
     const updated = await report.save();
 
-    res.json({ success: true, message: 'Report updated successfully', data: updated });
+    res.json({
+      success: true,
+      message: 'Report updated successfully',
+      data: updated
+    });
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Error updating report', error: error.message });
+    console.error('UPDATE ERROR:', error.message);
+    res.status(500).json({
+      success: false,
+      message: 'Error updating report',
+      error: error.message
+    });
   }
 });
 
@@ -149,6 +265,46 @@ app.delete('/api/reports/:id', authMiddleware, async (req, res) => {
     res.json({ success: true, message: 'Report deleted successfully' });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Error deleting report', error: error.message });
+  }
+});
+
+app.post('/api/reports/:id/upvote', authMiddleware, async (req, res) => {
+  try {
+    const reportId = req.params.id;
+    const userId = req.user.id;
+
+    const report = await Report.findById(reportId);
+
+    if (!report) {
+      return res.status(404).json({ success: false, message: 'Report not found' });
+    }
+
+    if (report.user.toString() === userId) {
+      return res.status(400).json({ success: false, message: 'Cannot upvote your own report' });
+    }
+
+    const alreadyUpvoted = report.upvotedBy.some(id => id.toString() === userId);
+
+    if (alreadyUpvoted) {
+      report.upvotedBy = report.upvotedBy.filter(id => id.toString() !== userId);
+      report.upvotes = Math.max(0, report.upvotes - 1);
+    } else {
+      report.upvotedBy.push(userId);
+      report.upvotes += 1;
+    }
+
+    await report.save();
+
+    res.json({
+      success: true,
+      data: {
+        upvotes: report.upvotes,
+        hasUpvoted: !alreadyUpvoted
+      }
+    });
+  } catch (error) {
+    console.error('UPVOTE ERROR:', error.message);
+    res.status(500).json({ success: false, message: 'Error processing upvote' });
   }
 });
 
@@ -597,28 +753,96 @@ app.put('/api/owner/accommodations/:id/occupancy', authMiddleware, ownerMiddlewa
   }
 });
 
-// TEMPORARY: Make user admin (DELETE THIS AFTER USE)
-app.put('/api/make-admin/:email', async (req, res) => {
+// ============ PROFILE ROUTES ============
+
+// Get profile with stats
+app.get('/api/profile', authMiddleware, async (req, res) => {
   try {
-    const { email } = req.params;
-    
-    const user = await User.findOneAndUpdate(
-      { email: email },
-      { role: 'admin' },
-      { new: true }
-    ).select('-password');
-    
+    const user = await User.findById(req.user.id).select('-password').lean();
+
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
-    
-    res.json({ 
-      success: true, 
-      message: `${email} is now an admin!`,
-      data: user 
+
+    const totalReports = await Report.countDocuments({ user: req.user.id });
+
+    const upvoteResult = await Report.aggregate([
+      { $match: { user: new mongoose.Types.ObjectId(req.user.id) } },
+      { $group: { _id: null, totalUpvotes: { $sum: '$upvotes' } } }
+    ]);
+
+    const totalUpvotes = upvoteResult.length > 0 ? upvoteResult[0].totalUpvotes : 0;
+
+    res.json({
+      success: true,
+      data: {
+        ...user,
+        totalReports,
+        totalUpvotes
+      }
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    console.error('PROFILE ERROR:', error.message);
+    res.status(500).json({ success: false, message: 'Error fetching profile' });
+  }
+});
+
+// Update name
+app.put('/api/profile', authMiddleware, async (req, res) => {
+  try {
+    const { name } = req.body;
+
+    if (!name || name.trim() === '') {
+      return res.status(400).json({ success: false, message: 'Name is required' });
+    }
+
+    const user = await User.findByIdAndUpdate(
+      req.user.id,
+      { name: name.trim() },
+      { new: true }
+    ).select('-password');
+
+    res.json({ success: true, data: user });
+  } catch (error) {
+    console.error('PROFILE UPDATE ERROR:', error.message);
+    res.status(500).json({ success: false, message: 'Error updating profile' });
+  }
+});
+
+// Change password
+app.put('/api/profile/password', authMiddleware, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ success: false, message: 'Both current and new password are required' });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ success: false, message: 'New password must be at least 6 characters' });
+    }
+
+    const user = await User.findById(req.user.id);
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const bcrypt = require('bcryptjs');
+    const isMatch = await bcrypt.compare(currentPassword, user.password);
+
+    if (!isMatch) {
+      return res.status(400).json({ success: false, message: 'Current password is incorrect' });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    user.password = await bcrypt.hash(newPassword, salt);
+    await user.save();
+
+    res.json({ success: true, message: 'Password changed successfully' });
+  } catch (error) {
+    console.error('PASSWORD CHANGE ERROR:', error.message);
+    res.status(500).json({ success: false, message: 'Error changing password' });
   }
 });
 

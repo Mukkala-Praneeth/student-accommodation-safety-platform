@@ -33,6 +33,20 @@ export const Header: React.FC = () => {
               <span>Accommodations</span>
             </Link>
 
+            {/* Show when NOT logged in */}
+            {!user && (
+              <>
+                <Link to="/login" className="text-gray-700 hover:text-blue-600 flex items-center space-x-1">
+                  <FiLogIn className="h-4 w-4" />
+                  <span>Student Login</span>
+                </Link>
+                <Link to="/owner/login" className="text-gray-700 hover:text-blue-600 flex items-center space-x-1">
+                  <FiShield className="h-4 w-4" />
+                  <span>Owner Portal</span>
+                </Link>
+              </>
+            )}
+
             {/* Show when logged in as STUDENT */}
             {user && user.role === 'student' && (
               <>
@@ -40,29 +54,36 @@ export const Header: React.FC = () => {
                   <FiUser className="h-4 w-4" />
                   <span>Dashboard</span>
                 </Link>
+                <Link to="/report" className="text-gray-700 hover:text-blue-600 flex items-center space-x-1">
+                  <FiAlertTriangle className="h-4 w-4" />
+                  <span>Report Issue</span>
+                </Link>
                 <Link to="/my-reports" className="text-gray-700 hover:text-blue-600 flex items-center space-x-1">
                   <FiList className="h-4 w-4" />
                   <span>My Reports</span>
                 </Link>
+                <Link to="/profile">Profile</Link>
               </>
             )}
 
             {/* Show when logged in as OWNER */}
             {user && user.role === 'owner' && (
-              <Link to="/owner/dashboard" className="text-gray-700 hover:text-blue-600 flex items-center space-x-1">
-                <FiList className="h-4 w-4" />
-                <span>Dashboard</span>
-              </Link>
+              <>
+                <Link to="/owner/dashboard" className="text-gray-700 hover:text-blue-600 flex items-center space-x-1">
+                  <FiUser className="h-4 w-4" />
+                  <span>Dashboard</span>
+                </Link>
+              </>
             )}
 
             {/* Show when logged in as ADMIN */}
             {user && user.role === 'admin' && (
               <>
                 <Link to="/admin" className="text-gray-700 hover:text-blue-600 flex items-center space-x-1">
-                  <FiAlertTriangle className="h-4 w-4" />
+                  <FiShield className="h-4 w-4" />
                   <span>Admin Panel</span>
                 </Link>
-                <Link to="/dashboard" className="text-gray-700 hover:text-blue-600 flex items-center space-x-1">
+                <Link to="/admin?tab=reports" className="text-gray-700 hover:text-blue-600 flex items-center space-x-1">
                   <FiList className="h-4 w-4" />
                   <span>View Reports</span>
                 </Link>

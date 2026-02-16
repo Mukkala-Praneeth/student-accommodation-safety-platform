@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
+import { ImageGallery } from '../components/ImageGallery';
 
 interface Stats {
   totalReports: number;
@@ -16,6 +18,7 @@ interface Report {
   accommodationName: string;
   issueType: string;
   description: string;
+  images?: Array<{ url: string; publicId?: string }>;
   status: string;
   createdAt: string;
   user: { name: string; email: string } | null;
@@ -31,7 +34,11 @@ interface User {
 }
 
 export default function AdminDashboard() {
-  const [activeTab, setActiveTab] = useState<'overview' | 'reports' | 'users' | 'counterReports'>('overview');
+  const location = useLocation();
+  const queryParams = new URLSearchParams(location.search);
+  const initialTab = (queryParams.get('tab') as any) || 'overview';
+
+  const [activeTab, setActiveTab] = useState<'overview' | 'reports' | 'users' | 'counterReports'>(initialTab);
   const [stats, setStats] = useState<Stats | null>(null);
   const [reports, setReports] = useState<Report[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -40,18 +47,17 @@ export default function AdminDashboard() {
   const [error, setError] = useState('');
   const navigate = useNavigate();
 
+  const { user, loading: authLoading } = useAuth();
   const token = localStorage.getItem('token');
 
   useEffect(() => {
-    if (!token) {
-      navigate('/login');
-      return;
+    if (!authLoading && user && user.role === 'admin') {
+      fetchStats();
+      fetchReports();
+      fetchUsers();
+      fetchAdminCounterReports();
     }
-    fetchStats();
-    fetchReports();
-    fetchUsers();
-    fetchAdminCounterReports();
-  }, []);
+  }, [authLoading, user]);
 
   const fetchStats = async () => {
     try {

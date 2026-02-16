@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAccommodation } from '../contexts/AccommodationContext';
 import { useAuth } from '../contexts/AuthContext';
 import { FiMapPin, FiShield, FiAlertTriangle, FiFileText, FiUpload, FiClock } from 'react-icons/fi';
 import { formatDistanceToNow } from 'date-fns';
+import { ImageGallery } from '../components/ImageGallery';
+import UpvoteButton from '../components/UpvoteButton';
 
 export const AccommodationDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -12,6 +14,19 @@ export const AccommodationDetail: React.FC = () => {
   const { user } = useAuth();
   const [counterEvidence, setCounterEvidence] = useState('');
   const [showCounterEvidenceForm, setShowCounterEvidenceForm] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string>('');
+
+  useEffect(() => {
+    try {
+      const token = localStorage.getItem('token');
+      if (token) {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        setCurrentUserId(payload.user?.id || payload.id || payload.userId || '');
+      }
+    } catch {
+      setCurrentUserId('');
+    }
+  }, []);
 
   const accommodation = accommodations.find(acc => acc.id === id);
   
@@ -149,7 +164,18 @@ export const AccommodationDetail: React.FC = () => {
                 )}
               </div>
               <p className="text-gray-700">{report.description}</p>
-              <p className="text-sm text-gray-600 mt-2">Reported by: {report.userName}</p>
+              <ImageGallery images={report.images} />
+              <div className="flex justify-between items-center mt-2">
+                <p className="text-sm text-gray-600">Reported by: {report.userName}</p>
+                {currentUserId && (
+                  <UpvoteButton
+                    reportId={report.id || report._id}
+                    initialUpvotes={report.upvotes || 0}
+                    initialHasUpvoted={(report.upvotedBy || []).includes(currentUserId)}
+                    isOwnReport={(report.user === currentUserId) || (report.user?._id === currentUserId)}
+                  />
+                )}
+              </div>
             </div>
           ))}
           {accommodation.reports.length === 0 && (

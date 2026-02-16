@@ -1,12 +1,26 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { ImageGallery } from '../components/ImageGallery';
+import { ImageUpload } from '../components/ImageUpload';
+import ErrorBoundary from '../components/ErrorBoundary';
+import ReportCard from '../components/ReportCard';
+
+
+interface Image {
+  url: string;
+  publicId?: string;
+}
 
 interface Report {
   _id: string;
   accommodationName: string;
   issueType: string;
   description: string;
+  images?: Image[];
   createdAt: string;
+  upvotes?: number;
+  upvotedBy?: string[];
+  user?: string;
 }
 
 export default function MyReports() {
@@ -19,7 +33,22 @@ export default function MyReports() {
     issueType: '',
     description: ''
   });
+  const [editImages, setEditImages] = useState<{url: string; publicId: string}[]>([]);
+  const [editLoading, setEditLoading] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string>('');
   const navigate = useNavigate();
+
+  useEffect(() => {
+    try {
+      const token = localStorage.getItem('token');
+      if (token) {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        setCurrentUserId(payload.user?.id || payload.id || payload.userId || '');
+      }
+    } catch {
+      setCurrentUserId('');
+    }
+  }, []);
 
   useEffect(() => {
     fetchMyReports();
@@ -27,7 +56,7 @@ export default function MyReports() {
 
   const fetchMyReports = async () => {
     const token = localStorage.getItem('token');
-    
+
     if (!token) {
       setError('Please login to view your reports');
       setLoading(false);
@@ -52,7 +81,6 @@ export default function MyReports() {
       }
     } catch (err) {
       setError('Error connecting to server');
-      console.error(err);
     } finally {
       setLoading(false);
     }
@@ -65,6 +93,11 @@ export default function MyReports() {
       issueType: report.issueType,
       description: report.description
     });
+
+    setEditImages((report.images || []).map(img => ({
+      url: img.url,
+      publicId: img.publicId || img.url
+    })));
   };
 
   const handleCancelEdit = () => {
@@ -74,14 +107,22 @@ export default function MyReports() {
       issueType: '',
       description: ''
     });
+    setEditImages([]);
   };
 
   const handleUpdateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!editingReport) return;
 
     const token = localStorage.getItem('token');
+    setEditLoading(true);
+
+    // Filter out any invalid images instead of blocking submission
+    const validImages = editImages.filter(img => img.url && img.publicId);
+
+    // Preserve existing images
+    const imagesToSend = editImages.length > 0 ? editImages : (editingReport.images || []);
 
     try {
       const response = await fetch(`http://localhost:5000/api/reports/${editingReport._id}`, {
@@ -90,7 +131,10 @@ export default function MyReports() {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(editFormData)
+        body: JSON.stringify({
+          ...editFormData,
+          images: imagesToSend
+        })
       });
 
       const data = await response.json();
@@ -98,6 +142,7 @@ export default function MyReports() {
       if (data.success) {
         alert('Report updated successfully!');
         setEditingReport(null);
+        setEditImages([]);
         fetchMyReports(); // Refresh the list
       } else {
         alert(data.message || 'Failed to update report');
@@ -105,6 +150,8 @@ export default function MyReports() {
     } catch (err) {
       alert('Error updating report');
       console.error(err);
+    } finally {
+      setEditLoading(false);
     }
   };
 
@@ -199,8 +246,62 @@ export default function MyReports() {
                   required
                 />
               </div>
+              <div className="form-group">
+                <label>Evidence Photos</label>
+                {editImages && editImages.length > 0 && (
+                  <div style={{marginBottom: '15px'}}>
+                    <label style={{display: 'block', marginBottom: '8px', fontWeight: '600'}}>
+                      Current Images:
+                    </label>
+                    <div style={{display: 'flex', gap: '10px', flexWrap: 'wrap'}}>
+                      {editImages.map((img, index) => (
+                        <div key={index} style={{position: 'relative', width: '100px', height: '100px'}}>
+                          <img
+                            src={img.url}
+                            alt={'Report image ' + (index + 1)}
+                            style={{
+                              width: '100%',
+                              height: '100%',
+                              objectFit: 'cover',
+                              borderRadius: '8px',
+                              border: '1px solid #e5e7eb'
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setEditImages(prev => prev.filter((_, i) => i !== index))}
+                            style={{
+                              position: 'absolute',
+                              top: '-8px',
+                              right: '-8px',
+                              background: '#ef4444',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '50%',
+                              width: '22px',
+                              height: '22px',
+                              cursor: 'pointer',
+                              fontSize: '12px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              boxShadow: '0 1px 3px rgba(0,0,0,0.3)'
+                            }}
+                          >✕</button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <ImageUpload
+                  uploadedImages={editImages}
+                  onImagesChange={setEditImages}
+                />
+              </div>
               <div className="modal-actions">
-                <button type="submit" className="btn-primary">Save Changes</button>
+                <button type="submit" className="btn-primary" disabled={editLoading}>
+                  {editLoading ? 'Saving...' : 'Save Changes'}
+                </button>
                 <button type="button" onClick={handleCancelEdit} className="btn-secondary">Cancel</button>
               </div>
             </form>
@@ -221,63 +322,16 @@ export default function MyReports() {
       ) : (
         <div className="reports-grid">
           {reports.map((report) => (
-            <div key={report._id} className="report-card my-report-card">
-              <div className="report-header">
-                <h3>{report.accommodationName}</h3>
-                <span className={`badge ${getIssueBadgeClass(report.issueType)}`}>
-                  {report.issueType}
-                </span>
-              </div>
-              
-              <div className="report-body">
-                <p className="description">{report.description}</p>
-              </div>
-
-              <div className="report-footer">
-                <span className="date">
-                  📅 {new Date(report.createdAt).toLocaleDateString('en-US', {
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric'
-                  })}
-                </span>
-                <span className="time">
-                  🕒 {new Date(report.createdAt).toLocaleTimeString('en-US', {
-                    hour: '2-digit',
-                    minute: '2-digit'
-                  })}
-                </span>
-              </div>
-
-              <div className="report-actions">
-                <button 
-                  className="btn-secondary btn-sm"
-                  onClick={() => handleEdit(report)}
-                >
-                  Edit
-                </button>
-                <button 
-                  className="btn-danger btn-sm"
-                  onClick={() => handleDelete(report._id)}
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
+            <ReportCard
+              key={report._id}
+              report={report}
+              onEdit={handleEdit}
+              onDelete={handleDelete}
+              currentUserId={currentUserId}
+            />
           ))}
         </div>
       )}
     </div>
   );
-}
-
-function getIssueBadgeClass(issueType: string): string {
-  const classes: { [key: string]: string } = {
-    'Food Safety': 'badge-danger',
-    'Water Quality': 'badge-warning',
-    'Hygiene': 'badge-info',
-    'Security': 'badge-danger',
-    'Infrastructure': 'badge-warning'
-  };
-  return classes[issueType] || 'badge-default';
 }

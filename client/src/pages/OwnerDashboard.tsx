@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { ImageGallery } from '../components/ImageGallery';
 
 interface Stats {
   totalAccommodations: number;
@@ -32,6 +33,7 @@ interface Report {
   accommodationName: string;
   issueType: string;
   description: string;
+  images?: Array<{ url: string; publicId?: string }>;
   status: string;
   isCountered: boolean;
   counterStatus: string;
@@ -79,20 +81,14 @@ export default function OwnerDashboard() {
     evidenceDescription: ''
   });
 
+  const { user, loading: authLoading } = useAuth();
   const token = localStorage.getItem('token');
-  const { logout, user } = useAuth();
 
   useEffect(() => {
-    if (!user) {
-      navigate('/owner/login');
-      return;
+    if (!authLoading && user && user.role === 'owner') {
+      fetchAll();
     }
-    if (user.role !== 'owner') {
-      navigate('/login');
-      return;
-    }
-    fetchAll();
-  }, [user]);
+  }, [authLoading, user]);
 
   const fetchAll = () => {
     fetchStats();
@@ -252,6 +248,12 @@ export default function OwnerDashboard() {
       alert('Error submitting counter report');
     }
   };
+
+  const handleLogout = () => {
+    logout();
+    navigate('/owner/login');
+  };
+
   if (loading) {
     return <div className="owner-loading">Loading dashboard...</div>;
   }
@@ -409,6 +411,7 @@ export default function OwnerDashboard() {
                     </div>
                   </div>
                   <p className="report-description">{report.description}</p>
+                  <ImageGallery images={report.images} />
                   <div className="report-meta">
                     <span>Reported by: {report.user?.name || 'Anonymous'}</span>
                     <span>{new Date(report.createdAt).toLocaleDateString()}</span>

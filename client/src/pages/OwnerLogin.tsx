@@ -23,21 +23,22 @@ export default function OwnerLogin() {
 
     try {
       // Use AuthContext.login so context updates for the whole app
-      const user = await login(formData.email, formData.password);
+      const loggedInUser = await login(formData.email, formData.password);
 
-      if (!user) {
+      // Get user from context after login
+      if (!loggedInUser) {
         setError('Login failed');
         return;
       }
 
-      if (user.role !== 'owner') {
+      if (loggedInUser.role !== 'owner') {
         setError('This login is for accommodation owners only. Please use student login.');
         return;
       }
 
       navigate('/owner/dashboard');
-    } catch (err) {
-      setError('Error connecting to server');
+    } catch (err: any) {
+      setError(err.message || 'Error connecting to server');
     } finally {
       setLoading(false);
     }

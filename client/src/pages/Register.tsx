@@ -7,9 +7,9 @@ export const Register: React.FC = () => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [role, setRole] = useState<'student' | 'owner'>('student');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const role = 'student'; // Hardcoded for student registration
   
   const { register } = useAuth();
   const navigate = useNavigate();
@@ -112,6 +112,21 @@ export const Register: React.FC = () => {
           </div>
 
           <div>
+            <label htmlFor="role" className="block text-sm font-medium text-gray-700 mb-2">
+              Account Type
+            </label>
+            <select
+              id="role"
+              value={role}
+              onChange={(e) => setRole(e.target.value as 'student' | 'owner')}
+              className="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              <option value="student">Student</option>
+              <option value="owner">Accommodation Owner</option>
+            </select>
+          </div>
+
+          <div>
             <button
               type="submit"
               disabled={loading}
@@ -121,11 +136,11 @@ export const Register: React.FC = () => {
             </button>
           </div>
         </form>
-        <div className="auth-footer">
-          <p>Already have an account? <Link to="/login">Login as Student</Link></p>
-          <div className="divider">or</div>
-          <p>Are you an accommodation owner? <Link to="/owner/register">Register Here</Link></p>
-        </div>
+      </div>
+      <div className="auth-footer">
+        <p>Already have an account? <Link to="/login">Login as Student</Link></p>
+        <div className="divider">or</div>
+        <p>Accommodation Owner? <Link to="/owner/register">Register Here</Link></p>
       </div>
     </div>
   );
