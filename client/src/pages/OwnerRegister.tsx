@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function OwnerRegister() {
+  const API = import.meta.env.VITE_API_URL || 'http://localhost:5000';
   const navigate = useNavigate();
   const { login } = useAuth();
   const [formData, setFormData] = useState({
@@ -31,7 +32,7 @@ export default function OwnerRegister() {
     setLoading(true);
 
     try {
-      const res = await fetch('http://localhost:5000/api/auth/register-owner', {
+      const res = await fetch(`${API}/api/auth/register-owner`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

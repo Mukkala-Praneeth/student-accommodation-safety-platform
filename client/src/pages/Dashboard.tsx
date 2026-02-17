@@ -7,6 +7,7 @@ import { formatDistanceToNow } from 'date-fns';
 import UpvoteButton from '../components/UpvoteButton';
 
 export const Dashboard: React.FC = () => {
+  const API = import.meta.env.VITE_API_URL || 'http://localhost:5000';
   const { user } = useAuth();
   const { accommodations } = useAccommodation();
   const [activeTab, setActiveTab] = useState<'overview' | 'reports' | 'alerts'>('overview');
@@ -29,7 +30,7 @@ export const Dashboard: React.FC = () => {
 
   const fetchReports = async () => {
     try {
-      const res = await fetch("http://localhost:5000/api/reports");
+      const res = await fetch(`${API}/api/reports`);
       const data = await res.json();
       if (data.success) {
         setReports(data.data);
@@ -45,7 +46,7 @@ export const Dashboard: React.FC = () => {
 
   useEffect(() => {
     fetchReports();
-  }, []);
+  }, [API]);
 
   if (loading) return <h2 className="text-center mt-10 text-xl font-semibold">Loading reports...</h2>;
   if (error) return <h2 className="text-center mt-10 text-xl font-semibold text-red-600">{error}</h2>;

@@ -52,6 +52,7 @@ interface CounterReport {
 }
 
 export default function OwnerDashboard() {
+  const API = import.meta.env.VITE_API_URL || 'http://localhost:5000';
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'overview' | 'accommodations' | 'reports' | 'counters'>('overview');
   const [stats, setStats] = useState<Stats | null>(null);
@@ -88,7 +89,7 @@ export default function OwnerDashboard() {
     if (!authLoading && user && user.role === 'owner') {
       fetchAll();
     }
-  }, [authLoading, user]);
+  }, [authLoading, user, API]);
 
   const fetchAll = () => {
     fetchStats();
@@ -99,7 +100,7 @@ export default function OwnerDashboard() {
 
   const fetchStats = async () => {
     try {
-      const res = await fetch('http://localhost:5000/api/owner/stats', {
+      const res = await fetch(`${API}/api/owner/stats`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();
@@ -113,7 +114,7 @@ export default function OwnerDashboard() {
 
   const fetchAccommodations = async () => {
     try {
-      const res = await fetch('http://localhost:5000/api/owner/accommodations', {
+      const res = await fetch(`${API}/api/owner/accommodations`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();
@@ -125,7 +126,7 @@ export default function OwnerDashboard() {
 
   const fetchReports = async () => {
     try {
-      const res = await fetch('http://localhost:5000/api/owner/reports', {
+      const res = await fetch(`${API}/api/owner/reports`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();
@@ -137,7 +138,7 @@ export default function OwnerDashboard() {
 
   const fetchCounterReports = async () => {
     try {
-      const res = await fetch('http://localhost:5000/api/owner/counter-reports', {
+      const res = await fetch(`${API}/api/owner/counter-reports`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();
@@ -150,7 +151,7 @@ export default function OwnerDashboard() {
   const handleAddAccommodation = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch('http://localhost:5000/api/owner/accommodations', {
+      const res = await fetch(`${API}/api/owner/accommodations`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -180,7 +181,7 @@ export default function OwnerDashboard() {
 
   const handleUpdateOccupancy = async (accId: string, occupiedRooms: number) => {
     try {
-      const res = await fetch(`http://localhost:5000/api/owner/accommodations/${accId}/occupancy`, {
+      const res = await fetch(`${API}/api/owner/accommodations/${accId}/occupancy`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -202,7 +203,7 @@ export default function OwnerDashboard() {
   const handleDeleteAccommodation = async (accId: string) => {
     if (!window.confirm('Are you sure you want to delete this accommodation?')) return;
     try {
-      const res = await fetch(`http://localhost:5000/api/owner/accommodations/${accId}`, {
+      const res = await fetch(`${API}/api/owner/accommodations/${accId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -223,7 +224,7 @@ export default function OwnerDashboard() {
     if (!selectedReport) return;
 
     try {
-      const res = await fetch('http://localhost:5000/api/owner/counter-report', {
+      const res = await fetch(`${API}/api/owner/counter-report`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,

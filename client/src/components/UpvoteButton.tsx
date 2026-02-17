@@ -13,6 +13,7 @@ const UpvoteButton: React.FC<UpvoteButtonProps> = ({
   initialHasUpvoted,
   isOwnReport
 }) => {
+  const API = import.meta.env.VITE_API_URL || 'http://localhost:5000';
   const [upvotes, setUpvotes] = useState(initialUpvotes);
   const [hasUpvoted, setHasUpvoted] = useState(initialHasUpvoted);
   const [loading, setLoading] = useState(false);
@@ -32,7 +33,7 @@ const UpvoteButton: React.FC<UpvoteButtonProps> = ({
 
     try {
       const response = await fetch(
-        `${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/reports/${reportId}/upvote`,
+        `${API}/api/reports/${reportId}/upvote`,
         {
           method: 'POST',
           headers: {

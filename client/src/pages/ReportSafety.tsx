@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 export default function ReportSafety() {
+  const API = import.meta.env.VITE_API_URL || 'http://localhost:5000';
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
     accommodationName: "",
@@ -35,7 +36,7 @@ export default function ReportSafety() {
     }
 
     try {
-      const res = await fetch("http://localhost:5000/api/reports", {
+      const res = await fetch(`${API}/api/reports`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

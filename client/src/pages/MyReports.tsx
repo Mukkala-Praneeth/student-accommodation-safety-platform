@@ -24,6 +24,7 @@ interface Report {
 }
 
 export default function MyReports() {
+  const API = import.meta.env.VITE_API_URL || 'http://localhost:5000';
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -52,7 +53,7 @@ export default function MyReports() {
 
   useEffect(() => {
     fetchMyReports();
-  }, []);
+  }, [API]);
 
   const fetchMyReports = async () => {
     const token = localStorage.getItem('token');
@@ -65,7 +66,7 @@ export default function MyReports() {
     }
 
     try {
-      const response = await fetch('http://localhost:5000/api/reports/my-reports', {
+      const response = await fetch(`${API}/api/reports/my-reports`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -125,7 +126,7 @@ export default function MyReports() {
     const imagesToSend = editImages.length > 0 ? editImages : (editingReport.images || []);
 
     try {
-      const response = await fetch(`http://localhost:5000/api/reports/${editingReport._id}`, {
+      const response = await fetch(`${API}/api/reports/${editingReport._id}`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -163,7 +164,7 @@ export default function MyReports() {
     const token = localStorage.getItem('token');
 
     try {
-      const response = await fetch(`http://localhost:5000/api/reports/${reportId}`, {
+      const response = await fetch(`${API}/api/reports/${reportId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`,

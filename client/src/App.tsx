@@ -158,12 +158,13 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode; requiredRole?: strin
 };
 
 export function App() {
+  const API = import.meta.env.VITE_API_URL || 'http://localhost:5000';
   const [backendStatus, setBackendStatus] = useState<string>('Connecting...');
 
   useEffect(() => {
     const checkBackend = async () => {
       try {
-        const response = await fetch('http://localhost:5000/api/test');
+        const response = await fetch(`${API}/api/test`);
         const data = await response.json();
         setBackendStatus(data.message);
         console.log('Backend Response:', data.message);
@@ -174,7 +175,7 @@ export function App() {
     };
 
     checkBackend();
-  }, []);
+  }, [API]);
 
   return (
     <AuthProvider>

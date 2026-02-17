@@ -34,6 +34,7 @@ interface User {
 }
 
 export default function AdminDashboard() {
+  const API = import.meta.env.VITE_API_URL || 'http://localhost:5000';
   const location = useLocation();
   const queryParams = new URLSearchParams(location.search);
   const initialTab = (queryParams.get('tab') as any) || 'overview';
@@ -61,7 +62,7 @@ export default function AdminDashboard() {
 
   const fetchStats = async () => {
     try {
-      const res = await fetch('http://localhost:5000/api/admin/stats', {
+      const res = await fetch(`${API}/api/admin/stats`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();
@@ -79,7 +80,7 @@ export default function AdminDashboard() {
 
   const fetchReports = async () => {
     try {
-      const res = await fetch('http://localhost:5000/api/admin/reports', {
+      const res = await fetch(`${API}/api/admin/reports`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();
@@ -93,7 +94,7 @@ export default function AdminDashboard() {
 
   const fetchUsers = async () => {
     try {
-      const res = await fetch('http://localhost:5000/api/admin/users', {
+      const res = await fetch(`${API}/api/admin/users`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();
@@ -107,7 +108,7 @@ export default function AdminDashboard() {
 
   const fetchAdminCounterReports = async () => {
     try {
-      const res = await fetch('http://localhost:5000/api/admin/counter-reports', {
+      const res = await fetch(`${API}/api/admin/counter-reports`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();
@@ -121,7 +122,7 @@ export default function AdminDashboard() {
 
   const updateReportStatus = async (reportId: string, status: string) => {
     try {
-      const res = await fetch(`http://localhost:5000/api/admin/reports/${reportId}/status`, {
+      const res = await fetch(`${API}/api/admin/reports/${reportId}/status`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -146,7 +147,7 @@ export default function AdminDashboard() {
     if (!window.confirm('Are you sure you want to delete this report?')) return;
 
     try {
-      const res = await fetch(`http://localhost:5000/api/admin/reports/${reportId}`, {
+      const res = await fetch(`${API}/api/admin/reports/${reportId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -168,7 +169,7 @@ export default function AdminDashboard() {
     if (!window.confirm(`Are you sure you want to ${action} this user?`)) return;
 
     try {
-      const res = await fetch(`http://localhost:5000/api/admin/users/${userId}/ban`, {
+      const res = await fetch(`${API}/api/admin/users/${userId}/ban`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -193,7 +194,7 @@ export default function AdminDashboard() {
     const adminNotes = prompt(`Add notes (optional) for this ${status} decision:`);
 
     try {
-      const res = await fetch(`http://localhost:5000/api/admin/counter-reports/${counterId}`, {
+      const res = await fetch(`${API}/api/admin/counter-reports/${counterId}`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,

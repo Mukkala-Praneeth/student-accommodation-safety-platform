@@ -12,6 +12,7 @@ interface ImageUploadProps {
 }
 
 export const ImageUpload: React.FC<ImageUploadProps> = ({ onImagesChange, uploadedImages = [] }) => {
+  const API = import.meta.env.VITE_API_URL || 'http://localhost:5000';
   const [images, setImages] = useState<Image[]>(uploadedImages);
 
   // Sync internal state with prop changes (important for edit modal)
@@ -85,7 +86,7 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({ onImagesChange, upload
       const token = localStorage.getItem('token');
       console.log('[ImageUpload] Uploading', validFiles.length, 'files to /api/upload');
       
-      const response = await fetch('http://localhost:5000/api/upload', {
+      const response = await fetch(`${API}/api/upload`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`
@@ -125,7 +126,7 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({ onImagesChange, upload
   const removeImage = async (publicId: string) => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`http://localhost:5000/api/upload/${publicId}`, {
+      const response = await fetch(`${API}/api/upload/${publicId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`
