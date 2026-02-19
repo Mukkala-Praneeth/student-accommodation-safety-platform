@@ -4,6 +4,7 @@ import { useAccommodation } from '../contexts/AccommodationContext';
 import { FiSearch, FiMapPin, FiShield, FiAlertTriangle, FiTrendingUp } from 'react-icons/fi';
 
 export const AccommodationList: React.FC = () => {
+  const API = import.meta.env.VITE_API_URL || 'http://localhost:5000';
   const { accommodations } = useAccommodation();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedClassification, setSelectedClassification] = useState<string>('all');

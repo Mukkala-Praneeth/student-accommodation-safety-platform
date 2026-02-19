@@ -4,6 +4,7 @@ import { FiShield, FiAlertTriangle, FiMap, FiFileText, FiUser, FiHome } from 're
 import { useAuth } from '../contexts/AuthContext';
 
 export const Home: React.FC = () => {
+  const API = import.meta.env.VITE_API_URL || 'http://localhost:5000';
   const { user } = useAuth();
 
   const features = [

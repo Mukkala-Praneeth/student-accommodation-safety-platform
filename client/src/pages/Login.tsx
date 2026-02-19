@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { FiLogIn, FiMail, FiLock } from 'react-icons/fi';
 
 export const Login: React.FC = () => {
+  const API = import.meta.env.VITE_API_URL || 'http://localhost:5000';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');

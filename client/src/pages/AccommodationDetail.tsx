@@ -8,6 +8,7 @@ import { ImageGallery } from '../components/ImageGallery';
 import UpvoteButton from '../components/UpvoteButton';
 
 export const AccommodationDetail: React.FC = () => {
+  const API = import.meta.env.VITE_API_URL || 'http://localhost:5000';
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { accommodations, addCounterEvidence, updateAccommodationStatus } = useAccommodation();

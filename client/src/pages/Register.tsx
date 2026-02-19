@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { FiUserPlus, FiMail, FiLock, FiUser } from 'react-icons/fi';
 
 export const Register: React.FC = () => {
+  const API = import.meta.env.VITE_API_URL || 'http://localhost:5000';
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');

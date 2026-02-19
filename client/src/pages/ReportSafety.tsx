@@ -23,11 +23,10 @@ export default function ReportSafety() {
     e.preventDefault();
     setLoading(true);
 
-    console.log("=== FORM SUBMIT ===");
-    console.log("formData:", formData);
+    
 
     const token = localStorage.getItem("token");
-    console.log("token exists:", !!token);
+   
 
     if (!token) {
       alert("Please login first");
@@ -45,9 +44,9 @@ export default function ReportSafety() {
         body: JSON.stringify(formData),
       });
 
-      console.log("Response status:", res.status);
+     
       const data = await res.json();
-      console.log("Response data:", data);
+      
 
       if (data.success) {
         alert("Report submitted successfully!");
@@ -61,7 +60,6 @@ export default function ReportSafety() {
         alert(data.message || "Failed to submit report");
       }
     } catch (err) {
-      console.log("Error:", err);
       alert("Error submitting report");
     } finally {
       setLoading(false);

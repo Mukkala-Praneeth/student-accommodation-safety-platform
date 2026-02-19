@@ -163,14 +163,33 @@ export function App() {
 
   useEffect(() => {
     const checkBackend = async () => {
-      try {
-        const response = await fetch(`${API}/api/test`);
-        const data = await response.json();
-        setBackendStatus(data.message);
-        console.log('Backend Response:', data.message);
-      } catch (error) {
-        setBackendStatus('Error connecting to backend');
-        console.error('Backend connection error:', error);
+      setBackendStatus('Connecting to server...');
+      
+      const maxRetries = 3;
+      let attempt = 0;
+
+      while (attempt < maxRetries) {
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+          const response = await fetch(`${API}/api/test`, {
+            signal: controller.signal
+          });
+          clearTimeout(timeoutId);
+
+          const data = await response.json();
+          setBackendStatus(data.message || 'Connected');
+          return;
+        } catch (error) {
+          attempt++;
+          if (attempt < maxRetries) {
+            setBackendStatus(`Server is waking up... Attempt ${attempt + 1}/${maxRetries}`);
+            await new Promise(resolve => setTimeout(resolve, 5000));
+          } else {
+            setBackendStatus('Server is starting up. Please refresh in 30 seconds.');
+          }
+        }
       }
     };
 

@@ -163,10 +163,20 @@ export const ReportIncident: React.FC = () => {
                   value={formData.description}
                   onChange={handleInputChange}
                   rows={6}
+                  maxLength={2000}
                   placeholder="Please provide a detailed description of the safety issue..."
                   className="w-full p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   required
                 />
+                <p className={`text-xs mt-1 text-right ${
+                formData.description.length > 1800
+                 ? formData.description.length > 2000
+                   ? 'text-red-600 font-bold'
+                   : 'text-yellow-600'
+                 : 'text-gray-400'
+                }`}>
+                 {formData.description.length}/2000 characters
+                </p>
               </div>
 
               {/* Image Upload */}

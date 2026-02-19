@@ -1,7 +1,8 @@
 require("dotenv").config();
-console.log("JWT_SECRET:", process.env.JWT_SECRET);
 const mongoose = require("mongoose");
 const express = require("express");
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const cors = require("cors");
 const path = require("path");
 const Report = require("./models/Report");
@@ -16,6 +17,11 @@ const { cloudinary, upload } = require('./config/cloudinary');
 
 const app = express();
 
+// Security headers
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" }
+}));
+
 app.use(cors({
   origin: function(origin, callback) {
     const allowedOrigins = [
@@ -27,13 +33,39 @@ app.use(cors({
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      callback(null, true);
+      callback(new Error('Not allowed by CORS'));
     }
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
+
+// Rate limiting — prevent brute force attacks
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,  // 15 minutes
+  max: 20,                    // 20 attempts per window
+  message: { success: false, message: 'Too many attempts. Please try again after 15 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,  // 15 minutes
+  max: 100,                   // 100 requests per window
+  message: { success: false, message: 'Too many requests. Please slow down.' },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+// Apply rate limiters
+app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/signup', authLimiter);
+app.use('/api/auth/register-owner', authLimiter);
+app.use('/api/profile/password', authLimiter);
+app.use('/api/', apiLimiter);
+
+
 app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use("/api/auth", authRoutes);
@@ -51,22 +83,16 @@ app.get("/api/test", (req, res) => {
 // Upload images
 app.post('/api/upload', authMiddleware, upload.array('images', 5), (req, res) => {
   try {
-    console.log('[Upload] Received upload request');
-    console.log('[Upload] Files count:', req.files ? req.files.length : 0);
-    
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({ success: false, message: 'No files uploaded' });
     }
 
     const uploadedImages = req.files.map(file => {
-      console.log('[Upload] Processing file:', file.filename);
       return {
         url: file.path,
         publicId: file.filename
       };
     });
-
-    console.log('[Upload] Uploaded images:', uploadedImages);
 
     res.json({
       success: true,
@@ -134,9 +160,7 @@ app.get('/api/reports/my-reports', authMiddleware, async (req, res) => {
 // GET all reports
 app.get('/api/reports', async (req, res) => {
   try {
-    console.log("===== GET ALL REPORTS =====");
     const reports = await Report.find().sort({ createdAt: -1 });
-    console.log("Reports found:", reports.length);
     res.status(200).json({
       success: true,
       data: reports
@@ -153,34 +177,39 @@ app.get('/api/reports', async (req, res) => {
 // POST new report
 app.post('/api/reports', authMiddleware, async (req, res) => {
   try {
-    console.log('=== NEW REPORT SUBMISSION ===');
-    console.log('req.user:', req.user);
-    console.log('req.body:', req.body);
-
+    // Input validation
     const { accommodationName, issueType, description, images } = req.body;
 
-    // Validate required fields
-    if (!accommodationName || !issueType || !description) {
-      return res.status(400).json({
-        success: false,
-        message: 'Missing required fields'
-      });
+    if (!accommodationName || !accommodationName.trim()) {
+      return res.status(400).json({ success: false, message: 'Accommodation name is required' });
+    }
+
+    if (!issueType || !issueType.trim()) {
+      return res.status(400).json({ success: false, message: 'Issue type is required' });
+    }
+
+    if (!description || !description.trim()) {
+      return res.status(400).json({ success: false, message: 'Description is required' });
+    }
+
+    const validIssueTypes = ['Food Safety', 'Water Quality', 'Hygiene', 'Security', 'Infrastructure'];
+    if (!validIssueTypes.includes(issueType)) {
+      return res.status(400).json({ success: false, message: 'Invalid issue type' });
+    }
+
+    if (description.length > 2000) {
+      return res.status(400).json({ success: false, message: 'Description cannot exceed 2000 characters' });
+    }
+
+    if (accommodationName.length > 200) {
+      return res.status(400).json({ success: false, message: 'Accommodation name cannot exceed 200 characters' });
     }
 
     // Validate and filter images
     let validatedImages = [];
     if (images && Array.isArray(images)) {
       validatedImages = images.filter(img => img && img.url && img.publicId);
-      console.log('Validated images:', validatedImages.length, 'of', images.length);
     }
-
-    console.log('Creating report with:', {
-      accommodationName,
-      issueType,
-      description,
-      imageCount: validatedImages.length,
-      userId: req.user.id
-    });
 
     const newReport = new Report({
       accommodationName,
@@ -191,7 +220,6 @@ app.post('/api/reports', authMiddleware, async (req, res) => {
     });
 
     const saved = await newReport.save();
-    console.log('Report saved successfully! ID:', saved._id);
 
     res.status(201).json({
       success: true,
@@ -213,11 +241,6 @@ app.put('/api/reports/:id', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
     const { accommodationName, issueType, description, images } = req.body;
-
-    console.log('=== UPDATE REPORT ===');
-    console.log('Report ID:', id);
-    console.log('User ID:', req.user.id);
-    console.log('Updated data:', { accommodationName, issueType, description, images });
 
     const report = await Report.findById(id);
 
@@ -507,7 +530,7 @@ app.post('/api/auth/register-owner', async (req, res) => {
   try {
     const { name, email, password, phone } = req.body;
 
-    const existingUser = await User.findOne({ email });
+    const existingUser = await User.findOne({ email }).select('-password');
     if (existingUser) {
       return res.status(400).json({ success: false, message: 'Email already registered' });
     }
@@ -809,8 +832,16 @@ app.put('/api/profile', authMiddleware, async (req, res) => {
   try {
     const { name } = req.body;
 
-    if (!name || name.trim() === '') {
+    if (!name || !name.trim()) {
       return res.status(400).json({ success: false, message: 'Name is required' });
+    }
+
+    if (name.trim().length < 2) {
+      return res.status(400).json({ success: false, message: 'Name must be at least 2 characters' });
+    }
+
+    if (name.trim().length > 50) {
+      return res.status(400).json({ success: false, message: 'Name cannot exceed 50 characters' });
     }
 
     const user = await User.findByIdAndUpdate(
@@ -861,6 +892,40 @@ app.put('/api/profile/password', authMiddleware, async (req, res) => {
     console.error('PASSWORD CHANGE ERROR:', error.message);
     res.status(500).json({ success: false, message: 'Error changing password' });
   }
+});
+
+// 404 handler for undefined routes
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    message: `Route ${req.method} ${req.originalUrl} not found`
+  });
+});
+
+// Global error handler
+app.use((err, req, res, next) => {
+  console.error('UNHANDLED ERROR:', err.message);
+  console.error(err.stack);
+
+  if (err.name === 'ValidationError') {
+    const messages = Object.values(err.errors).map(e => e.message);
+    return res.status(400).json({ success: false, message: messages.join(', ') });
+  }
+
+  if (err.name === 'CastError') {
+    return res.status(400).json({ success: false, message: 'Invalid ID format' });
+  }
+
+  if (err.code === 11000) {
+    return res.status(400).json({ success: false, message: 'Duplicate entry found' });
+  }
+
+  res.status(err.status || 500).json({
+    success: false,
+    message: process.env.NODE_ENV === 'production'
+      ? 'Internal server error'
+      : err.message
+  });
 });
 
 const PORT = process.env.PORT || 5000;

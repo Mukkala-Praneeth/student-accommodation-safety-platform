@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function OwnerLogin() {
+  const API = import.meta.env.VITE_API_URL || 'http://localhost:5000';
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
     email: '',

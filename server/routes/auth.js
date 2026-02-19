@@ -1,5 +1,3 @@
-console.log("AUTH ROUTES LOADED");
-
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
@@ -10,7 +8,6 @@ const router = express.Router();
 // @route   POST /api/auth/signup
 // @desc    Register a new user
 router.post("/signup", async (req, res) => {
-  console.log("Signup request received:", req.body);
   const { name, email, password, role } = req.body;
 
   try {
@@ -26,7 +23,7 @@ router.post("/signup", async (req, res) => {
     const normalizedEmail = email.toLowerCase().trim();
 
     // 3. Check if user exists
-    let user = await User.findOne({ email: normalizedEmail });
+    let user = await User.findOne({ email: normalizedEmail }).select('-password');
     if (user) {
       return res.status(400).json({ 
         success: false, 
@@ -48,7 +45,6 @@ router.post("/signup", async (req, res) => {
 
     // 6. Save user to MongoDB
     await newUser.save();
-    console.log("User saved successfully:", newUser.email);
 
     res.status(201).json({ 
       success: true, 

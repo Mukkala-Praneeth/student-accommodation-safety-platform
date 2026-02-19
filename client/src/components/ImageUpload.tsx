@@ -84,8 +84,7 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({ onImagesChange, upload
       });
 
       const token = localStorage.getItem('token');
-      console.log('[ImageUpload] Uploading', validFiles.length, 'files to /api/upload');
-      
+     
       const response = await fetch(`${API}/api/upload`, {
         method: 'POST',
         headers: {
@@ -100,15 +99,14 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({ onImagesChange, upload
       }
 
       const data = await response.json();
-      console.log('[ImageUpload] Upload response:', data);
-      console.log('[ImageUpload] data.data:', data.data);
+      
       
       if (!data.data || !Array.isArray(data.data)) {
         throw new Error('Invalid response format from server');
       }
 
       const newImages = [...images, ...data.data];
-      console.log('[ImageUpload] New images array:', newImages);
+     
       
       setImages(newImages);
       onImagesChange(newImages);
