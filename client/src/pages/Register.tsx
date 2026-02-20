@@ -22,9 +22,15 @@ export const Register: React.FC = () => {
 
     try {
       await register(name, email, password, role);
-      navigate('/dashboard');
-    } catch (err) {
-      setError('Registration failed. Please try again.');
+      // Redirect to verify email page instead of dashboard
+      navigate('/verify-email', { state: { email: email } });
+    } catch (err: any) {
+      // Check if registration succeeded but needs verification
+      if (err.message?.includes('verify') || err.message?.includes('Verification')) {
+        navigate('/verify-email', { state: { email: email } });
+        return;
+      }
+      setError(err.message || 'Registration failed. Please try again.');
     } finally {
       setLoading(false);
     }

@@ -18,6 +18,8 @@ import OwnerRegister from './pages/OwnerRegister';
 import OwnerLogin from './pages/OwnerLogin';
 import OwnerDashboard from './pages/OwnerDashboard';
 import Profile from './pages/Profile';
+import VerifyEmail from './pages/VerifyEmail';
+import ForgotPassword from './pages/ForgotPassword';
 
 
 // Mock data for demonstration
@@ -247,6 +249,8 @@ export function App() {
                 />
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
+                <Route path="/verify-email" element={<VerifyEmail />} />
+                <Route path="/forgot-password" element={<ForgotPassword />} />
                 <Route path="/owner/register" element={<OwnerRegister />} />
                 <Route path="/owner/login" element={<OwnerLogin />} />
                 <Route path="/profile" element={<Profile />} />

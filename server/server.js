@@ -13,6 +13,8 @@ const ownerMiddleware = require('./middleware/ownerMiddleware');
 const User = require('./models/User');
 const Accommodation = require('./models/Accommodation');
 const CounterReport = require('./models/CounterReport');
+const OTP = require('./models/OTP');
+const { generateOTP, sendOTPEmail } = require('./utils/emailService');
 const { cloudinary, upload } = require('./config/cloudinary');
 
 const app = express();
@@ -893,6 +895,185 @@ app.put('/api/profile/password', authMiddleware, async (req, res) => {
     res.status(500).json({ success: false, message: 'Error changing password' });
   }
 });
+
+// ============ OTP ROUTES ============
+
+// Send verification OTP
+app.post('/api/otp/send-verification', async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email || !email.trim()) {
+      return res.status(400).json({ success: false, message: 'Email is required' });
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+
+    const user = await User.findOne({ email: normalizedEmail });
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'No account found with this email' });
+    }
+
+    if (user.isVerified) {
+      return res.status(400).json({ success: false, message: 'Email already verified' });
+    }
+
+    // Delete any existing OTP for this email
+    await OTP.deleteMany({ email: normalizedEmail, type: 'verification' });
+
+    const otp = generateOTP();
+    const otpDoc = new OTP({
+      email: normalizedEmail,
+      otp,
+      type: 'verification',
+      expiresAt: new Date(Date.now() + 10 * 60 * 1000)  // 10 minutes
+    });
+
+    await otpDoc.save();
+
+    const emailResult = await sendOTPEmail(normalizedEmail, otp, 'verification');
+
+    if (!emailResult.success) {
+      return res.status(500).json({ success: false, message: 'Failed to send OTP email' });
+    }
+
+    res.json({ success: true, message: 'Verification OTP sent to your email' });
+  } catch (error) {
+    console.error('SEND VERIFICATION OTP ERROR:', error.message);
+    res.status(500).json({ success: false, message: 'Error sending OTP' });
+  }
+});
+
+// Verify email OTP
+app.post('/api/otp/verify-email', async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+
+    if (!email || !otp) {
+      return res.status(400).json({ success: false, message: 'Email and OTP are required' });
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+
+    const otpDoc = await OTP.findOne({
+      email: normalizedEmail,
+      type: 'verification',
+      expiresAt: { $gt: new Date() }
+    });
+
+    if (!otpDoc) {
+      return res.status(400).json({ success: false, message: 'OTP expired or invalid. Please request a new one.' });
+    }
+
+    if (otpDoc.otp !== otp.trim()) {
+      return res.status(400).json({ success: false, message: 'Incorrect OTP. Please try again.' });
+    }
+
+    await User.findOneAndUpdate(
+      { email: normalizedEmail },
+      { isVerified: true }
+    );
+
+    await OTP.deleteMany({ email: normalizedEmail, type: 'verification' });
+
+    res.json({ success: true, message: 'Email verified successfully! You can now login.' });
+  } catch (error) {
+    console.error('VERIFY EMAIL ERROR:', error.message);
+    res.status(500).json({ success: false, message: 'Error verifying OTP' });
+  }
+});
+
+// Send forgot password OTP
+app.post('/api/otp/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email || !email.trim()) {
+      return res.status(400).json({ success: false, message: 'Email is required' });
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+
+    const user = await User.findOne({ email: normalizedEmail });
+    if (!user) {
+      return res.status(400).json({ success: false, message: 'No account found with this email' });
+    }
+
+    await OTP.deleteMany({ email: normalizedEmail, type: 'password-reset' });
+
+    const otp = generateOTP();
+    const otpDoc = new OTP({
+      email: normalizedEmail,
+      otp,
+      type: 'password-reset',
+      expiresAt: new Date(Date.now() + 10 * 60 * 1000)
+    });
+
+    await otpDoc.save();
+
+    const emailResult = await sendOTPEmail(normalizedEmail, otp, 'password-reset');
+
+    if (!emailResult.success) {
+      return res.status(500).json({ success: false, message: 'Failed to send OTP email' });
+    }
+
+    res.json({ success: true, message: 'Password reset OTP sent to your email' });
+  } catch (error) {
+    console.error('FORGOT PASSWORD OTP ERROR:', error.message);
+    res.status(500).json({ success: false, message: 'Error sending OTP' });
+  }
+});
+
+// Reset password with OTP
+app.post('/api/otp/reset-password', async (req, res) => {
+  try {
+    const { email, otp, newPassword } = req.body;
+
+    if (!email || !otp || !newPassword) {
+      return res.status(400).json({ success: false, message: 'Email, OTP, and new password are required' });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ success: false, message: 'Password must be at least 6 characters' });
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+
+    const otpDoc = await OTP.findOne({
+      email: normalizedEmail,
+      type: 'password-reset',
+      expiresAt: { $gt: new Date() }
+    });
+
+    if (!otpDoc) {
+      return res.status(400).json({ success: false, message: 'OTP expired or invalid. Please request a new one.' });
+    }
+
+    if (otpDoc.otp !== otp.trim()) {
+      return res.status(400).json({ success: false, message: 'Incorrect OTP. Please try again.' });
+    }
+
+    const bcrypt = require('bcryptjs');
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+    await User.findOneAndUpdate(
+      { email: normalizedEmail },
+      { password: hashedPassword }
+    );
+
+    await OTP.deleteMany({ email: normalizedEmail, type: 'password-reset' });
+
+    res.json({ success: true, message: 'Password reset successfully! You can now login with your new password.' });
+  } catch (error) {
+    console.error('RESET PASSWORD ERROR:', error.message);
+    res.status(500).json({ success: false, message: 'Error resetting password' });
+  }
+});
+
+// Apply rate limiting to OTP routes (prevent spam)
+app.use('/api/otp/send-verification', authLimiter);
+app.use('/api/otp/forgot-password', authLimiter);
 
 // 404 handler for undefined routes
 app.use((req, res) => {

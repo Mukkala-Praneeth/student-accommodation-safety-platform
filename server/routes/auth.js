@@ -46,9 +46,27 @@ router.post("/signup", async (req, res) => {
     // 6. Save user to MongoDB
     await newUser.save();
 
-    res.status(201).json({ 
-      success: true, 
-      message: "User registered successfully" 
+    // Send verification OTP
+    const { generateOTP, sendOTPEmail } = require('../utils/emailService');
+    const OTP = require('../models/OTP');
+
+    const otp = generateOTP();
+    const otpDoc = new OTP({
+      email: newUser.email.toLowerCase(),
+      otp,
+      type: 'verification',
+      expiresAt: new Date(Date.now() + 10 * 60 * 1000)
+    });
+    await otpDoc.save();
+
+    // Send email in background — dont block response
+    sendOTPEmail(newUser.email, otp, 'verification');
+
+    res.status(201).json({
+      success: true,
+      message: "User registered successfully. Please verify your email.",
+      requiresVerification: true,
+      email: newUser.email
     });
   } catch (err) {
     console.error("Signup error:", err);
@@ -89,6 +107,16 @@ router.post("/login", async (req, res) => {
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(400).json({ message: "Invalid credentials" });
+    }
+
+    // Check if email is verified
+    if (!user.isVerified) {
+      return res.status(403).json({
+        success: false,
+        message: "Your email is not verified. Please verify your email to login.",
+        requiresVerification: true,
+        email: user.email
+      });
     }
 
     // Generate JWT

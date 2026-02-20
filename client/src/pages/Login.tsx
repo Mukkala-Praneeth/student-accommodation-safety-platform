@@ -19,10 +19,8 @@ export const Login: React.FC = () => {
     setLoading(true);
 
     try {
-      // Use AuthContext.login so context updates for the whole app
       const loggedInUser = await login(email, password);
 
-      // Get user from context after login
       if (!loggedInUser) {
         setError('Login failed');
         return;
@@ -33,13 +31,17 @@ export const Login: React.FC = () => {
         return;
       }
 
-      // Role-based redirect
       if (loggedInUser.role === 'admin'){
         navigate('/admin');
       } else {
-        navigate('/dashboard'); // student dashboard
+        navigate('/dashboard');
       }
     } catch (err: any) {
+      // Check if email needs verification
+      if (err.message?.includes('verify') || err.message?.includes('not verified')) {
+        navigate('/verify-email', { state: { email: email } });
+        return;
+      }
       setError(err.message || 'Error connecting to server');
     } finally {
       setLoading(false);
@@ -121,6 +123,16 @@ export const Login: React.FC = () => {
               className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
             >
               {loading ? 'Signing in...' : 'Sign in'}
+            </button>
+          </div>
+
+          <div className="text-center mt-3">
+            <button
+              type="button"
+              onClick={() => navigate('/forgot-password')}
+              className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+            >
+              Forgot Password?
             </button>
           </div>
         </form>
