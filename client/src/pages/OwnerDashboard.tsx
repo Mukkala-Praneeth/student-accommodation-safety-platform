@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { ImageGallery } from '../components/ImageGallery';
+import LocationPicker from '../components/LocationPicker';
 
 interface Stats {
   totalAccommodations: number;
@@ -75,6 +76,9 @@ export default function OwnerDashboard() {
     pricePerMonth: 0,
     contactPhone: ''
   });
+
+  const [newLatitude, setNewLatitude] = useState<number | null>(null);
+  const [newLongitude, setNewLongitude] = useState<number | null>(null);
 
   const [counterForm, setCounterForm] = useState({
     reason: 'false_information',
@@ -159,7 +163,9 @@ export default function OwnerDashboard() {
         },
         body: JSON.stringify({
           ...newAccommodation,
-          amenities: newAccommodation.amenities.split(',').map(a => a.trim()).filter(a => a)
+          amenities: newAccommodation.amenities.split(',').map(a => a.trim()).filter(a => a),
+          latitude: newLatitude,
+          longitude: newLongitude
         })
       });
       const data = await res.json();
@@ -170,6 +176,8 @@ export default function OwnerDashboard() {
           name: '', address: '', city: '', description: '',
           amenities: '', totalRooms: 0, pricePerMonth: 0, contactPhone: ''
         });
+        setNewLatitude(null);
+        setNewLongitude(null);
         fetchAll();
       } else {
         alert(data.message);
@@ -251,7 +259,7 @@ export default function OwnerDashboard() {
   };
 
   const handleLogout = () => {
-    logout();
+    localStorage.removeItem('token');
     navigate('/owner/login');
   };
 
@@ -542,6 +550,19 @@ export default function OwnerDashboard() {
                   required
                 />
               </div>
+
+              {/* Location Picker */}
+              <div className="form-group">
+                <LocationPicker
+                  latitude={newLatitude}
+                  longitude={newLongitude}
+                  onLocationChange={(lat, lng) => {
+                    setNewLatitude(lat);
+                    setNewLongitude(lng);
+                  }}
+                />
+              </div>
+
               <div className="modal-actions">
                 <button type="submit" className="btn-primary">Add Accommodation</button>
                 <button type="button" onClick={() => setShowAddModal(false)} className="btn-secondary">Cancel</button>

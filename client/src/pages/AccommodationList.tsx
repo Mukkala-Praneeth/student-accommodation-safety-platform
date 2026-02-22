@@ -2,12 +2,14 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAccommodation } from '../contexts/AccommodationContext';
 import { FiSearch, FiMapPin, FiShield, FiAlertTriangle, FiTrendingUp } from 'react-icons/fi';
+import AccommodationMap from '../components/AccommodationMap';
 
 export const AccommodationList: React.FC = () => {
   const API = import.meta.env.VITE_API_URL || 'http://localhost:5000';
   const { accommodations } = useAccommodation();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedClassification, setSelectedClassification] = useState<string>('all');
+  const [showMap, setShowMap] = useState(false);
 
   // Filter accommodations based on search and classification
   const filteredAccommodations = accommodations.filter(acc => {
@@ -66,6 +68,21 @@ export const AccommodationList: React.FC = () => {
             </select>
           </div>
         </div>
+      </div>
+
+      {/* Map Section */}
+      <div className="mb-8">
+        <button
+          onClick={() => setShowMap(!showMap)}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors shadow-sm"
+        >
+          🗺️ {showMap ? 'Hide Map' : 'View Accommodation Map'}
+        </button>
+        {showMap && (
+          <div className="mt-4">
+            <AccommodationMap />
+          </div>
+        )}
       </div>
 
       {/* Accommodation List */}

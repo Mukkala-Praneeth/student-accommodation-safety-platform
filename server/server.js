@@ -625,7 +625,7 @@ app.get('/api/owner/accommodations', authMiddleware, ownerMiddleware, async (req
 // Add new accommodation
 app.post('/api/owner/accommodations', authMiddleware, ownerMiddleware, async (req, res) => {
   try {
-    const { name, address, city, description, amenities, totalRooms, pricePerMonth, contactPhone } = req.body;
+    const { name, address, city, description, amenities, totalRooms, pricePerMonth, contactPhone, latitude, longitude } = req.body;
 
     const newAccommodation = new Accommodation({
       name,
@@ -636,7 +636,13 @@ app.post('/api/owner/accommodations', authMiddleware, ownerMiddleware, async (re
       totalRooms,
       pricePerMonth,
       contactPhone,
-      owner: req.user.id
+      owner: req.user.id,
+      latitude: latitude || null,
+      longitude: longitude || null,
+      location: latitude && longitude ? {
+        type: 'Point',
+        coordinates: [longitude, latitude]
+      } : undefined
     });
 
     const saved = await newAccommodation.save();
@@ -1074,6 +1080,21 @@ app.post('/api/otp/reset-password', async (req, res) => {
 // Apply rate limiting to OTP routes (prevent spam)
 app.use('/api/otp/send-verification', authLimiter);
 app.use('/api/otp/forgot-password', authLimiter);
+
+// Get accommodations with location data for map
+app.get('/api/accommodations/with-location', async (req, res) => {
+  try {
+    const accommodations = await Accommodation.find({
+      latitude: { $ne: null, $ne: 0 },
+      longitude: { $ne: null, $ne: 0 }
+    }).select('name latitude longitude address type totalReports').lean();
+
+    res.json({ success: true, data: accommodations });
+  } catch (error) {
+    console.error('MAP ACCOMMODATIONS ERROR:', error.message);
+    res.status(500).json({ success: false, message: 'Error fetching map data' });
+  }
+});
 
 // 404 handler for undefined routes
 app.use((req, res) => {

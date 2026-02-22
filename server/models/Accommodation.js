@@ -55,7 +55,28 @@ const AccommodationSchema = new mongoose.Schema({
   createdAt: {
     type: Date,
     default: Date.now
+  },
+  location: {
+    type: {
+      type: String,
+      enum: ['Point'],
+      default: 'Point'
+    },
+    coordinates: {
+      type: [Number],
+      default: [0, 0]
+    }
+  },
+  latitude: {
+    type: Number,
+    default: null
+  },
+  longitude: {
+    type: Number,
+    default: null
   }
 });
+
+AccommodationSchema.index({ location: '2dsphere' });
 
 module.exports = mongoose.model('Accommodation', AccommodationSchema);

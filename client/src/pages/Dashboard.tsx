@@ -5,6 +5,8 @@ import { useAccommodation } from '../contexts/AccommodationContext';
 import { FiAlertTriangle, FiShield, FiFileText, FiMap, FiTrendingUp, FiClock } from 'react-icons/fi';
 import { formatDistanceToNow } from 'date-fns';
 import UpvoteButton from '../components/UpvoteButton';
+import AccommodationMap from '../components/AccommodationMap';
+
 
 export const Dashboard: React.FC = () => {
   const API = import.meta.env.VITE_API_URL || 'http://localhost:5000';
@@ -15,6 +17,7 @@ export const Dashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [currentUserId, setCurrentUserId] = useState<string>('');
+  const [showMap, setShowMap] = useState(false);
 
   useEffect(() => {
     try {
@@ -71,6 +74,20 @@ export const Dashboard: React.FC = () => {
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900">Welcome back, {user?.name}!</h1>
         <p className="text-gray-600 mt-2">Your student accommodation safety dashboard</p>
+      </div>
+
+      <div className="mb-8">
+        <button
+          onClick={() => setShowMap(!showMap)}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors shadow-sm"
+        >
+          🗺️ {showMap ? 'Hide Map' : 'View Accommodation Map'}
+        </button>
+        {showMap && (
+          <div className="mt-4">
+            <AccommodationMap />
+          </div>
+        )}
       </div>
 
       {/* Stats Cards */}
