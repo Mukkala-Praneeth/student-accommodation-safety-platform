@@ -16,6 +16,11 @@ const CounterReport = require('./models/CounterReport');
 const OTP = require('./models/OTP');
 const { generateOTP, sendOTPEmail } = require('./utils/emailService');
 const { cloudinary, upload } = require('./config/cloudinary');
+const { updateAccommodationScore } = require('./utils/trustScore');
+
+function escapeRegex(string) {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
 const app = express();
 
@@ -45,16 +50,16 @@ app.use(cors({
 
 // Rate limiting — prevent brute force attacks
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,  // 15 minutes
-  max: 20,                    // 20 attempts per window
+  windowMs: 15 * 60 * 1000,
+  max: 20,
   message: { success: false, message: 'Too many attempts. Please try again after 15 minutes.' },
   standardHeaders: true,
   legacyHeaders: false
 });
 
 const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,  // 15 minutes
-  max: 100,                   // 100 requests per window
+  windowMs: 15 * 60 * 1000,
+  max: 100,
   message: { success: false, message: 'Too many requests. Please slow down.' },
   standardHeaders: true,
   legacyHeaders: false
@@ -66,7 +71,6 @@ app.use('/api/auth/signup', authLimiter);
 app.use('/api/auth/register-owner', authLimiter);
 app.use('/api/profile/password', authLimiter);
 app.use('/api/', apiLimiter);
-
 
 app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
@@ -82,7 +86,6 @@ app.get("/api/test", (req, res) => {
 
 // ============ IMAGE UPLOAD ROUTES ============
 
-// Upload images
 app.post('/api/upload', authMiddleware, upload.array('images', 5), (req, res) => {
   try {
     if (!req.files || req.files.length === 0) {
@@ -107,12 +110,9 @@ app.post('/api/upload', authMiddleware, upload.array('images', 5), (req, res) =>
   }
 });
 
-// Delete image
 app.delete('/api/upload/:publicId', authMiddleware, async (req, res) => {
   try {
     const { publicId } = req.params;
-
-    // Destroy the image from Cloudinary
     const result = await cloudinary.uploader.destroy(publicId);
 
     if (result.result !== 'ok') {
@@ -127,17 +127,27 @@ app.delete('/api/upload/:publicId', authMiddleware, async (req, res) => {
 });
 
 // ============ REPORT ROUTES ============
+
 app.get('/api/reports/my-reports', authMiddleware, async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
+    let page = parseInt(req.query.page) || 1;
+    let limit = parseInt(req.query.limit) || 10;
+    
+    // Validate pagination
+    if (page < 1) page = 1;
+    if (limit < 1) limit = 10;
+    if (limit > 100) limit = 100;
+
     const skip = (page - 1) * limit;
 
     const userReports = await Report.find({ user: req.user.id })
-      .select('accommodationName issueType description images createdAt status upvotes upvotedBy user')
+      .select('accommodationName accommodation issueType description images createdAt status upvotes upvotedBy user resolution verification')
+      .populate('accommodation', 'name address city')
+      .populate('resolution.resolvedBy', 'name')
       .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(limit);
+      .limit(limit)
+      .lean();
 
     const total = await Report.countDocuments({ user: req.user.id });
 
@@ -159,10 +169,12 @@ app.get('/api/reports/my-reports', authMiddleware, async (req, res) => {
   }
 });
 
-// GET all reports
 app.get('/api/reports', async (req, res) => {
   try {
-    const reports = await Report.find().sort({ createdAt: -1 });
+    const reports = await Report.find()
+      .populate('accommodation', 'name address city')
+      .sort({ createdAt: -1 })
+      .lean();
     res.status(200).json({
       success: true,
       data: reports
@@ -176,14 +188,14 @@ app.get('/api/reports', async (req, res) => {
   }
 });
 
-// POST new report
+// POST new report — NOW LINKS TO REGISTERED ACCOMMODATION
 app.post('/api/reports', authMiddleware, async (req, res) => {
   try {
-    // Input validation
-    const { accommodationName, issueType, description, images } = req.body;
+    const { accommodation, accommodationName, issueType, description, images } = req.body;
 
-    if (!accommodationName || !accommodationName.trim()) {
-      return res.status(400).json({ success: false, message: 'Accommodation name is required' });
+    // Must have either accommodation ID or name
+    if (!accommodation && (!accommodationName || !accommodationName.trim())) {
+      return res.status(400).json({ success: false, message: 'Please select or enter an accommodation name' });
     }
 
     if (!issueType || !issueType.trim()) {
@@ -203,18 +215,31 @@ app.post('/api/reports', authMiddleware, async (req, res) => {
       return res.status(400).json({ success: false, message: 'Description cannot exceed 2000 characters' });
     }
 
-    if (accommodationName.length > 200) {
-      return res.status(400).json({ success: false, message: 'Accommodation name cannot exceed 200 characters' });
-    }
-
     // Validate and filter images
     let validatedImages = [];
     if (images && Array.isArray(images)) {
       validatedImages = images.filter(img => img && img.url && img.publicId);
     }
 
+    // Resolve accommodation: if ID provided, validate it exists
+    let accommodationId = null;
+    let resolvedAccommodationName = accommodationName || '';
+
+    if (accommodation) {
+      if (!mongoose.Types.ObjectId.isValid(accommodation)) {
+        return res.status(400).json({ success: false, message: 'Invalid accommodation ID' });
+      }
+      const accommodationDoc = await Accommodation.findById(accommodation);
+      if (!accommodationDoc) {
+        return res.status(404).json({ success: false, message: 'Selected accommodation not found. Please choose a registered accommodation.' });
+      }
+      accommodationId = accommodationDoc._id;
+      resolvedAccommodationName = accommodationDoc.name;
+    }
+
     const newReport = new Report({
-      accommodationName,
+      accommodationName: resolvedAccommodationName,
+      accommodation: accommodationId,
       issueType,
       description,
       images: validatedImages,
@@ -222,6 +247,11 @@ app.post('/api/reports', authMiddleware, async (req, res) => {
     });
 
     const saved = await newReport.save();
+
+    // Update trust score if linked to accommodation
+    if (accommodationId) {
+      await updateAccommodationScore(Accommodation, Report, accommodationId);
+    }
 
     res.status(201).json({
       success: true,
@@ -238,39 +268,51 @@ app.post('/api/reports', authMiddleware, async (req, res) => {
   }
 });
 
-// Route 1 - UPDATE report:
+// UPDATE report
 app.put('/api/reports/:id', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
-    const { accommodationName, issueType, description, images } = req.body;
+    const { accommodation, accommodationName, issueType, description, images } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid report ID' });
+    }
 
     const report = await Report.findById(id);
 
     if (!report) {
-      return res.status(404).json({
-        success: false,
-        message: 'Report not found'
-      });
+      return res.status(404).json({ success: false, message: 'Report not found' });
     }
 
     if (report.user.toString() !== req.user.id) {
-      return res.status(403).json({
-        success: false,
-        message: 'You can only edit your own reports'
-      });
+      return res.status(403).json({ success: false, message: 'You can only edit your own reports' });
     }
 
-    // Update fields
-    report.accommodationName = accommodationName;
-    report.issueType = issueType;
-    report.description = description;
-
-    // Update images if provided
-    if (images !== undefined) {
-      report.images = images;
+    // If accommodation ID provided, validate and resolve
+    if (accommodation) {
+      if (!mongoose.Types.ObjectId.isValid(accommodation)) {
+        return res.status(400).json({ success: false, message: 'Invalid accommodation ID' });
+      }
+      const accommodationDoc = await Accommodation.findById(accommodation);
+      if (!accommodationDoc) {
+        return res.status(404).json({ success: false, message: 'Selected accommodation not found' });
+      }
+      report.accommodation = accommodationDoc._id;
+      report.accommodationName = accommodationDoc.name;
+    } else if (accommodationName) {
+      report.accommodationName = accommodationName;
     }
+
+    if (issueType) report.issueType = issueType;
+    if (description) report.description = description;
+    if (images !== undefined) report.images = images;
 
     const updated = await report.save();
+
+    // Recalculate trust score
+    if (report.accommodation) {
+      await updateAccommodationScore(Accommodation, Report, report.accommodation);
+    }
 
     res.json({
       success: true,
@@ -287,10 +329,14 @@ app.put('/api/reports/:id', authMiddleware, async (req, res) => {
   }
 });
 
-// Route 2 - DELETE report:
+// DELETE report
 app.delete('/api/reports/:id', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid report ID' });
+    }
 
     const report = await Report.findById(id);
 
@@ -302,7 +348,12 @@ app.delete('/api/reports/:id', authMiddleware, async (req, res) => {
       return res.status(403).json({ success: false, message: 'You can only delete your own reports' });
     }
 
+    const accommodationId = report.accommodation;
     await Report.findByIdAndDelete(id);
+
+    if (accommodationId) {
+      await updateAccommodationScore(Accommodation, Report, accommodationId);
+    }
 
     res.json({ success: true, message: 'Report deleted successfully' });
   } catch (error) {
@@ -310,9 +361,15 @@ app.delete('/api/reports/:id', authMiddleware, async (req, res) => {
   }
 });
 
+// UPVOTE report
 app.post('/api/reports/:id/upvote', authMiddleware, async (req, res) => {
   try {
     const reportId = req.params.id;
+    
+    if (!mongoose.Types.ObjectId.isValid(reportId)) {
+      return res.status(400).json({ success: false, message: 'Invalid report ID' });
+    }
+
     const userId = req.user.id;
 
     const report = await Report.findById(reportId);
@@ -337,6 +394,10 @@ app.post('/api/reports/:id/upvote', authMiddleware, async (req, res) => {
 
     await report.save();
 
+    if (report.accommodation) {
+      await updateAccommodationScore(Accommodation, Report, report.accommodation);
+    }
+
     res.json({
       success: true,
       data: {
@@ -350,9 +411,88 @@ app.post('/api/reports/:id/upvote', authMiddleware, async (req, res) => {
   }
 });
 
+app.put('/api/reports/:id/verify', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { accepted, feedback, disputeReason } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid report ID' });
+    }
+
+    const report = await Report.findById(id);
+    if (!report) {
+      return res.status(404).json({ success: false, message: 'Report not found' });
+    }
+
+    if (report.user.toString() !== req.user.id) {
+      return res.status(403).json({ success: false, message: 'Only the original reporter can verify the fix' });
+    }
+
+    if (report.status !== 'resolved') {
+      return res.status(400).json({ success: false, message: 'Report must be in resolved status to verify' });
+    }
+
+    if (accepted) {
+      report.status = 'verified';
+      report.verification = {
+        isVerified: true,
+        verifiedBy: req.user.id,
+        verifiedAt: new Date(),
+        feedback: feedback || ''
+      };
+    } else {
+      if (!disputeReason || !disputeReason.trim()) {
+        return res.status(400).json({ success: false, message: 'Dispute reason is required' });
+      }
+      report.status = 'disputed';
+      report.verification = {
+        isDisputed: true,
+        disputeReason: disputeReason.trim(),
+        verifiedBy: req.user.id,
+        verifiedAt: new Date()
+      };
+    }
+
+    await report.save();
+
+    if (report.accommodation) {
+      await updateAccommodationScore(Accommodation, Report, report.accommodation);
+    }
+
+    res.json({ success: true, message: accepted ? 'Resolution verified' : 'Resolution disputed', data: report });
+  } catch (error) {
+    console.error('VERIFY ERROR:', error);
+    res.status(500).json({ success: false, message: 'Error verifying report', error: error.message });
+  }
+});
+
+app.get('/api/reports/:id/resolution', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid report ID' });
+    }
+
+    const report = await Report.findById(id)
+      .populate('resolution.resolvedBy', 'name')
+      .populate('user', 'name')
+      .lean();
+
+    if (!report) {
+      return res.status(404).json({ success: false, message: 'Report not found' });
+    }
+
+    res.json({ success: true, data: report });
+  } catch (error) {
+    console.error('GET RESOLUTION ERROR:', error);
+    res.status(500).json({ success: false, message: 'Error fetching resolution details' });
+  }
+});
+
 // ============ ADMIN ROUTES ============
 
-// GET admin dashboard stats
 app.get('/api/admin/stats', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const totalReports = await Report.countDocuments();
@@ -384,12 +524,13 @@ app.get('/api/admin/stats', authMiddleware, adminMiddleware, async (req, res) =>
   }
 });
 
-// GET all reports for admin
 app.get('/api/admin/reports', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const reports = await Report.find()
       .populate('user', 'name email')
-      .sort({ createdAt: -1 });
+      .populate('accommodation', 'name address city')
+      .sort({ createdAt: -1 })
+      .lean();
 
     res.json({ success: true, data: reports });
   } catch (error) {
@@ -397,11 +538,14 @@ app.get('/api/admin/reports', authMiddleware, adminMiddleware, async (req, res) 
   }
 });
 
-// UPDATE report status (approve/reject)
 app.put('/api/admin/reports/:id/status', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
     const { status } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid report ID' });
+    }
 
     if (!['pending', 'approved', 'rejected'].includes(status)) {
       return res.status(400).json({ success: false, message: 'Invalid status' });
@@ -417,16 +561,23 @@ app.put('/api/admin/reports/:id/status', authMiddleware, adminMiddleware, async 
       return res.status(404).json({ success: false, message: 'Report not found' });
     }
 
+    if (report.accommodation) {
+      await updateAccommodationScore(Accommodation, Report, report.accommodation);
+    }
+
     res.json({ success: true, message: `Report ${status}`, data: report });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Error updating report', error: error.message });
   }
 });
 
-// DELETE any report (admin)
 app.delete('/api/admin/reports/:id', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid report ID' });
+    }
 
     const report = await Report.findByIdAndDelete(id);
 
@@ -440,12 +591,12 @@ app.delete('/api/admin/reports/:id', authMiddleware, adminMiddleware, async (req
   }
 });
 
-// GET all users
 app.get('/api/admin/users', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const users = await User.find({ role: 'student' })
       .select('-password')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
 
     res.json({ success: true, data: users });
   } catch (error) {
@@ -453,11 +604,14 @@ app.get('/api/admin/users', authMiddleware, adminMiddleware, async (req, res) =>
   }
 });
 
-// BAN/UNBAN user
 app.put('/api/admin/users/:id/ban', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
     const { isBanned } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid user ID' });
+    }
 
     const user = await User.findByIdAndUpdate(
       id,
@@ -469,24 +623,24 @@ app.put('/api/admin/users/:id/ban', authMiddleware, adminMiddleware, async (req,
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
-    res.json({ 
-      success: true, 
+    res.json({
+      success: true,
       message: isBanned ? 'User banned successfully' : 'User unbanned successfully',
-      data: user 
+      data: user
     });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Error updating user', error: error.message });
   }
 });
 
-// Get all counter reports (Admin)
 app.get('/api/admin/counter-reports', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const counterReports = await CounterReport.find()
       .populate('originalReport')
       .populate('accommodation', 'name')
       .populate('owner', 'name email')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
 
     res.json({ success: true, data: counterReports });
   } catch (error) {
@@ -494,11 +648,14 @@ app.get('/api/admin/counter-reports', authMiddleware, adminMiddleware, async (re
   }
 });
 
-// Review counter report (Admin)
 app.put('/api/admin/counter-reports/:id', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
     const { status, adminNotes } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid counter report ID' });
+    }
 
     if (!['accepted', 'rejected'].includes(status)) {
       return res.status(400).json({ success: false, message: 'Invalid status' });
@@ -525,9 +682,56 @@ app.put('/api/admin/counter-reports/:id', authMiddleware, adminMiddleware, async
   }
 });
 
+app.put('/api/admin/reports/:id/reopen', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid report ID' });
+    }
+
+    const report = await Report.findById(id);
+
+    if (!report) {
+      return res.status(404).json({ success: false, message: 'Report not found' });
+    }
+
+    if (report.status !== 'disputed') {
+      return res.status(400).json({ success: false, message: 'Only disputed reports can be reopened' });
+    }
+
+    report.status = 'approved';
+    report.resolution = {
+      description: '',
+      actionTaken: '',
+      images: [],
+      resolvedBy: null,
+      resolvedAt: null
+    };
+    report.verification = {
+      isVerified: false,
+      isDisputed: false,
+      verifiedBy: null,
+      verifiedAt: null,
+      feedback: '',
+      disputeReason: ''
+    };
+
+    await report.save();
+
+    if (report.accommodation) {
+      await updateAccommodationScore(Accommodation, Report, report.accommodation);
+    }
+
+    res.json({ success: true, message: 'Report reopened for owner', data: report });
+  } catch (error) {
+    console.error('REOPEN ERROR:', error);
+    res.status(500).json({ success: false, message: 'Error reopening report', error: error.message });
+  }
+});
+
 // ============ OWNER ROUTES ============
 
-// Register as owner
 app.post('/api/auth/register-owner', async (req, res) => {
   try {
     const { name, email, password, phone } = req.body;
@@ -578,22 +782,23 @@ app.post('/api/auth/register-owner', async (req, res) => {
   }
 });
 
-// Get owner dashboard stats
 app.get('/api/owner/stats', authMiddleware, ownerMiddleware, async (req, res) => {
   try {
     const accommodations = await Accommodation.find({ owner: req.user.id });
-    
+
     const totalAccommodations = accommodations.length;
     const totalRooms = accommodations.reduce((sum, a) => sum + a.totalRooms, 0);
     const occupiedRooms = accommodations.reduce((sum, a) => sum + a.occupiedRooms, 0);
     const occupancyRate = totalRooms > 0 ? Math.round((occupiedRooms / totalRooms) * 100) : 0;
 
-    const totalReports = await Report.countDocuments({ 
-      accommodationName: { $in: accommodations.map(a => a.name) }
+    // Use accommodation IDs for accurate report counting
+    const accommodationIds = accommodations.map(a => a._id);
+    const totalReports = await Report.countDocuments({
+      accommodation: { $in: accommodationIds }
     });
-    const pendingCounters = await CounterReport.countDocuments({ 
-      owner: req.user.id, 
-      status: 'pending' 
+    const pendingCounters = await CounterReport.countDocuments({
+      owner: req.user.id,
+      status: 'pending'
     });
 
     res.json({
@@ -612,20 +817,24 @@ app.get('/api/owner/stats', authMiddleware, ownerMiddleware, async (req, res) =>
   }
 });
 
-// Get owner's accommodations
 app.get('/api/owner/accommodations', authMiddleware, ownerMiddleware, async (req, res) => {
   try {
-    const accommodations = await Accommodation.find({ owner: req.user.id }).sort({ createdAt: -1 });
+    const accommodations = await Accommodation.find({ owner: req.user.id }).sort({ createdAt: -1 }).lean();
     res.json({ success: true, data: accommodations });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Error fetching accommodations', error: error.message });
   }
 });
 
-// Add new accommodation
 app.post('/api/owner/accommodations', authMiddleware, ownerMiddleware, async (req, res) => {
   try {
     const { name, address, city, description, amenities, totalRooms, pricePerMonth, contactPhone, latitude, longitude } = req.body;
+
+    // Parse latitude and longitude as numbers
+    const parsedLat = latitude ? parseFloat(latitude) : null;
+    const parsedLng = longitude ? parseFloat(longitude) : null;
+    const validLat = parsedLat !== null && !isNaN(parsedLat) ? parsedLat : null;
+    const validLng = parsedLng !== null && !isNaN(parsedLng) ? parsedLng : null;
 
     const newAccommodation = new Accommodation({
       name,
@@ -637,11 +846,11 @@ app.post('/api/owner/accommodations', authMiddleware, ownerMiddleware, async (re
       pricePerMonth,
       contactPhone,
       owner: req.user.id,
-      latitude: latitude || null,
-      longitude: longitude || null,
-      location: latitude && longitude ? {
+      latitude: validLat,
+      longitude: validLng,
+      location: validLat && validLng ? {
         type: 'Point',
-        coordinates: [longitude, latitude]
+        coordinates: [validLng, validLat]
       } : undefined
     });
 
@@ -652,18 +861,36 @@ app.post('/api/owner/accommodations', authMiddleware, ownerMiddleware, async (re
   }
 });
 
-// Update accommodation
 app.put('/api/owner/accommodations/:id', authMiddleware, ownerMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
-    
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid ID' });
+    }
+
     const accommodation = await Accommodation.findById(id);
     if (!accommodation) {
       return res.status(404).json({ success: false, message: 'Accommodation not found' });
     }
-    
+
     if (accommodation.owner.toString() !== req.user.id) {
       return res.status(403).json({ success: false, message: 'Not authorized' });
+    }
+
+    // Parse lat/lng if provided in update
+    if (req.body.latitude !== undefined || req.body.longitude !== undefined) {
+      const parsedLat = req.body.latitude ? parseFloat(req.body.latitude) : null;
+      const parsedLng = req.body.longitude ? parseFloat(req.body.longitude) : null;
+      req.body.latitude = parsedLat !== null && !isNaN(parsedLat) ? parsedLat : null;
+      req.body.longitude = parsedLng !== null && !isNaN(parsedLng) ? parsedLng : null;
+
+      if (req.body.latitude && req.body.longitude) {
+        req.body.location = {
+          type: 'Point',
+          coordinates: [req.body.longitude, req.body.latitude]
+        };
+      }
     }
 
     const updated = await Accommodation.findByIdAndUpdate(id, req.body, { new: true });
@@ -673,16 +900,19 @@ app.put('/api/owner/accommodations/:id', authMiddleware, ownerMiddleware, async 
   }
 });
 
-// Delete accommodation
 app.delete('/api/owner/accommodations/:id', authMiddleware, ownerMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
-    
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid ID' });
+    }
+
     const accommodation = await Accommodation.findById(id);
     if (!accommodation) {
       return res.status(404).json({ success: false, message: 'Accommodation not found' });
     }
-    
+
     if (accommodation.owner.toString() !== req.user.id) {
       return res.status(403).json({ success: false, message: 'Not authorized' });
     }
@@ -694,17 +924,22 @@ app.delete('/api/owner/accommodations/:id', authMiddleware, ownerMiddleware, asy
   }
 });
 
-// Get reports on owner's accommodations
+// Get reports on owner's accommodations — USES ACCOMMODATION IDs
 app.get('/api/owner/reports', authMiddleware, ownerMiddleware, async (req, res) => {
   try {
-    const accommodations = await Accommodation.find({ owner: req.user.id });
-    const accommodationNames = accommodations.map(a => a.name);
+    const accommodations = await Accommodation.find({ owner: req.user.id }).lean();
+    const accommodationIds = accommodations.map(a => a._id);
 
-    const reports = await Report.find({ 
-      accommodationName: { $in: accommodationNames }
+    const reports = await Report.find({
+      $or: [
+        { accommodation: { $in: accommodationIds } },
+        { accommodationName: { $in: accommodations.map(a => a.name) } }
+      ]
     })
     .populate('user', 'name email')
-    .sort({ createdAt: -1 });
+    .populate('accommodation', 'name address city')
+    .sort({ createdAt: -1 })
+    .lean();
 
     res.json({ success: true, data: reports });
   } catch (error) {
@@ -712,7 +947,67 @@ app.get('/api/owner/reports', authMiddleware, ownerMiddleware, async (req, res) 
   }
 });
 
-// Submit counter report
+app.put('/api/owner/reports/:id/resolve', authMiddleware, ownerMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid ID' });
+    }
+
+    const { description, actionTaken, images } = req.body;
+
+    if (!description || description.length < 10) {
+      return res.status(400).json({ success: false, message: 'Description must be at least 10 characters' });
+    }
+    if (!actionTaken) {
+      return res.status(400).json({ success: false, message: 'Action taken is required' });
+    }
+
+    const report = await Report.findById(id);
+    if (!report) {
+      return res.status(404).json({ success: false, message: 'Report not found' });
+    }
+
+    // Verify ownership
+    let accommodation = null;
+    if (report.accommodation) {
+      accommodation = await Accommodation.findOne({ _id: report.accommodation, owner: req.user.id });
+    }
+    if (!accommodation) {
+      accommodation = await Accommodation.findOne({ name: report.accommodationName, owner: req.user.id });
+    }
+
+    if (!accommodation) {
+      return res.status(403).json({ success: false, message: 'Not authorized to resolve this report' });
+    }
+
+    if (report.status !== 'approved' && report.status !== 'disputed') {
+      return res.status(400).json({ success: false, message: 'Can only resolve approved or disputed reports' });
+    }
+
+    report.status = 'resolved';
+    report.resolution = {
+      description,
+      actionTaken,
+      images: images || [],
+      resolvedBy: req.user.id,
+      resolvedAt: new Date()
+    };
+
+    await report.save();
+
+    if (report.accommodation) {
+      await updateAccommodationScore(Accommodation, Report, report.accommodation);
+    }
+
+    res.json({ success: true, message: 'Report resolved successfully', data: report });
+  } catch (error) {
+    console.error('RESOLVE ERROR:', error);
+    res.status(500).json({ success: false, message: 'Error resolving report', error: error.message });
+  }
+});
+
 app.post('/api/owner/counter-report', authMiddleware, ownerMiddleware, async (req, res) => {
   try {
     const { reportId, reason, explanation, evidenceUrls, evidenceDescription } = req.body;
@@ -722,10 +1017,20 @@ app.post('/api/owner/counter-report', authMiddleware, ownerMiddleware, async (re
       return res.status(404).json({ success: false, message: 'Report not found' });
     }
 
-    const accommodation = await Accommodation.findOne({ 
-      name: originalReport.accommodationName,
-      owner: req.user.id 
-    });
+    // Check by accommodation ID first, then by name
+    let accommodation = null;
+    if (originalReport.accommodation) {
+      accommodation = await Accommodation.findOne({
+        _id: originalReport.accommodation,
+        owner: req.user.id
+      });
+    }
+    if (!accommodation) {
+      accommodation = await Accommodation.findOne({
+        name: originalReport.accommodationName,
+        owner: req.user.id
+      });
+    }
 
     if (!accommodation) {
       return res.status(403).json({ success: false, message: 'Not authorized to counter this report' });
@@ -748,9 +1053,9 @@ app.post('/api/owner/counter-report', authMiddleware, ownerMiddleware, async (re
 
     await counterReport.save();
 
-    await Report.findByIdAndUpdate(reportId, { 
-      isCountered: true, 
-      counterStatus: 'pending' 
+    await Report.findByIdAndUpdate(reportId, {
+      isCountered: true,
+      counterStatus: 'pending'
     });
 
     res.status(201).json({ success: true, message: 'Counter report submitted successfully', data: counterReport });
@@ -759,13 +1064,13 @@ app.post('/api/owner/counter-report', authMiddleware, ownerMiddleware, async (re
   }
 });
 
-// Get owner's counter reports
 app.get('/api/owner/counter-reports', authMiddleware, ownerMiddleware, async (req, res) => {
   try {
     const counterReports = await CounterReport.find({ owner: req.user.id })
       .populate('originalReport')
       .populate('accommodation', 'name')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
 
     res.json({ success: true, data: counterReports });
   } catch (error) {
@@ -773,10 +1078,14 @@ app.get('/api/owner/counter-reports', authMiddleware, ownerMiddleware, async (re
   }
 });
 
-// Update room occupancy
 app.put('/api/owner/accommodations/:id/occupancy', authMiddleware, ownerMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid ID' });
+    }
+
     const { occupiedRooms } = req.body;
 
     const accommodation = await Accommodation.findById(id);
@@ -803,7 +1112,6 @@ app.put('/api/owner/accommodations/:id/occupancy', authMiddleware, ownerMiddlewa
 
 // ============ PROFILE ROUTES ============
 
-// Get profile with stats
 app.get('/api/profile', authMiddleware, async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select('-password').lean();
@@ -835,7 +1143,6 @@ app.get('/api/profile', authMiddleware, async (req, res) => {
   }
 });
 
-// Update name
 app.put('/api/profile', authMiddleware, async (req, res) => {
   try {
     const { name } = req.body;
@@ -865,7 +1172,6 @@ app.put('/api/profile', authMiddleware, async (req, res) => {
   }
 });
 
-// Change password
 app.put('/api/profile/password', authMiddleware, async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
@@ -904,7 +1210,6 @@ app.put('/api/profile/password', authMiddleware, async (req, res) => {
 
 // ============ OTP ROUTES ============
 
-// Send verification OTP
 app.post('/api/otp/send-verification', async (req, res) => {
   try {
     const { email } = req.body;
@@ -924,7 +1229,6 @@ app.post('/api/otp/send-verification', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Email already verified' });
     }
 
-    // Delete any existing OTP for this email
     await OTP.deleteMany({ email: normalizedEmail, type: 'verification' });
 
     const otp = generateOTP();
@@ -932,7 +1236,7 @@ app.post('/api/otp/send-verification', async (req, res) => {
       email: normalizedEmail,
       otp,
       type: 'verification',
-      expiresAt: new Date(Date.now() + 10 * 60 * 1000)  // 10 minutes
+      expiresAt: new Date(Date.now() + 10 * 60 * 1000)
     });
 
     await otpDoc.save();
@@ -950,7 +1254,6 @@ app.post('/api/otp/send-verification', async (req, res) => {
   }
 });
 
-// Verify email OTP
 app.post('/api/otp/verify-email', async (req, res) => {
   try {
     const { email, otp } = req.body;
@@ -989,7 +1292,6 @@ app.post('/api/otp/verify-email', async (req, res) => {
   }
 });
 
-// Send forgot password OTP
 app.post('/api/otp/forgot-password', async (req, res) => {
   try {
     const { email } = req.body;
@@ -1030,7 +1332,6 @@ app.post('/api/otp/forgot-password', async (req, res) => {
   }
 });
 
-// Reset password with OTP
 app.post('/api/otp/reset-password', async (req, res) => {
   try {
     const { email, otp, newPassword } = req.body;
@@ -1081,18 +1382,152 @@ app.post('/api/otp/reset-password', async (req, res) => {
 app.use('/api/otp/send-verification', authLimiter);
 app.use('/api/otp/forgot-password', authLimiter);
 
-// Get accommodations with location data for map
-app.get('/api/accommodations/with-location', async (req, res) => {
+// ============ ACCOMMODATION ROUTES ============
+// IMPORTANT: Route order matters! Specific routes BEFORE parameterized routes
+
+// 1. General list (no parameters)
+app.get('/api/accommodations', async (req, res) => {
   try {
-    const accommodations = await Accommodation.find({
-      latitude: { $ne: null, $ne: 0 },
-      longitude: { $ne: null, $ne: 0 }
-    }).select('name latitude longitude address type totalReports').lean();
+    const { search, city, type } = req.query;
+    let query = {};
+
+    if (search) {
+      const escapedSearch = escapeRegex(search);
+      query.$or = [
+        { name: { $regex: escapedSearch, $options: 'i' } },
+        { address: { $regex: escapedSearch, $options: 'i' } },
+        { city: { $regex: escapedSearch, $options: 'i' } }
+      ];
+    }
+
+    if (city) {
+      query.city = { $regex: escapeRegex(city), $options: 'i' };
+    }
+
+    if (type) {
+      query.type = type;
+    }
+
+    const accommodations = await Accommodation.find(query)
+      .select('_id name address city description amenities totalRooms occupiedRooms pricePerMonth contactPhone type latitude longitude trustScore trustScoreLabel trustScoreColor totalReports isVerified riskScore createdAt')
+      .sort({ trustScore: 1, createdAt: -1 })
+      .lean();
 
     res.json({ success: true, data: accommodations });
   } catch (error) {
-    console.error('MAP ACCOMMODATIONS ERROR:', error.message);
-    res.status(500).json({ success: false, message: 'Error fetching map data' });
+    console.error('GET ACCOMMODATIONS ERROR:', error.message);
+    res.status(500).json({ success: false, message: 'Error fetching accommodations' });
+  }
+});
+
+// 2. Dropdown list for report form (minimal data, specific route)
+app.get('/api/accommodations/dropdown', async (req, res) => {
+  try {
+    const accommodations = await Accommodation.find({})
+      .select('_id name address city type')
+      .sort({ name: 1 })
+      .lean();
+
+    res.json({ success: true, data: accommodations });
+  } catch (error) {
+    console.error('GET DROPDOWN ACCOMMODATIONS ERROR:', error.message);
+    res.status(500).json({ success: false, message: 'Error fetching accommodations' });
+  }
+});
+
+// 3. Accommodations with location data for map (specific route)
+app.get('/api/accommodations/with-location', async (req, res) => {
+  try {
+    console.log('=== FETCHING ACCOMMODATIONS WITH LOCATION ===');
+
+    // Get ALL accommodations first
+    const allAccommodations = await Accommodation.find({})
+      .select('_id name address city latitude longitude trustScore trustScoreLabel totalReports type')
+      .lean();
+
+    console.log('Total accommodations in DB:', allAccommodations.length);
+
+    if (allAccommodations.length === 0) {
+      return res.json({ success: true, data: [], message: 'No accommodations registered yet' });
+    }
+
+    // Filter those with valid numeric coordinates
+    const withValidLocation = allAccommodations.filter(acc => {
+      const lat = parseFloat(acc.latitude);
+      const lng = parseFloat(acc.longitude);
+      return !isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0;
+    });
+
+    console.log('With valid location:', withValidLocation.length);
+
+    // Normalize coordinates to ensure they are numbers
+    const normalizedData = withValidLocation.map(acc => ({
+      ...acc,
+      latitude: parseFloat(acc.latitude),
+      longitude: parseFloat(acc.longitude)
+    }));
+
+    // If none have location, return all with default coordinates
+    if (normalizedData.length === 0) {
+      const withDefaultLocation = allAccommodations.map(acc => ({
+        ...acc,
+        latitude: 20.5937,
+        longitude: 78.9629,
+        hasDefaultLocation: true
+      }));
+
+      return res.json({ success: true, data: withDefaultLocation });
+    }
+
+    res.json({ success: true, data: normalizedData });
+  } catch (error) {
+    console.error('GET ACCOMMODATIONS WITH LOCATION ERROR:', error);
+    res.status(500).json({ success: false, message: 'Error fetching accommodations' });
+  }
+});
+
+// 4. Single accommodation by ID (parameterized — MUST BE LAST)
+app.get('/api/accommodations/:id', async (req, res) => {
+  try {
+    const accommodation = await Accommodation.findById(req.params.id).lean();
+    if (!accommodation) {
+      return res.status(404).json({ success: false, message: 'Accommodation not found' });
+    }
+
+    // Fetch approved reports for this accommodation
+    const reports = await Report.find({
+      $or: [
+        { accommodation: req.params.id },
+        { accommodationName: accommodation.name }
+      ],
+      status: 'approved'
+    })
+    .populate('user', 'name')
+    .sort({ createdAt: -1 })
+    .lean();
+
+    res.json({
+      success: true,
+      data: {
+        ...accommodation,
+        reports
+      }
+    });
+  } catch (error) {
+    console.error('GET ACCOMMODATION BY ID ERROR:', error);
+    res.status(500).json({ success: false, message: 'Error fetching accommodation' });
+  }
+});
+
+// Recalculate trust score
+app.post('/api/accommodations/:id/recalculate-score', authMiddleware, async (req, res) => {
+  try {
+    await updateAccommodationScore(Accommodation, Report, req.params.id);
+    const acc = await Accommodation.findById(req.params.id)
+      .select('trustScore trustScoreLabel trustScoreColor totalReports').lean();
+    res.json({ success: true, data: acc });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Error recalculating score' });
   }
 });
 
@@ -1140,5 +1575,4 @@ mongoose.connect(process.env.MONGO_URI)
     });
   })
   .catch(err => console.error("MongoDB connection error:", err));
-
 

@@ -52,6 +52,9 @@ export interface Accommodation {
   ownerId?: string;
   reports: Report[];
   counterEvidence?: string;
+  trustScore?: number;
+  trustScoreLabel?: string;
+  trustScoreColor?: string;
 }
 
 // Mock data initialization

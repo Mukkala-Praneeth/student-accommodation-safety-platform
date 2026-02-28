@@ -52,22 +52,31 @@ export const Dashboard: React.FC = () => {
   }, [API]);
 
   if (loading) return <h2 className="text-center mt-10 text-xl font-semibold">Loading reports...</h2>;
-  if (error) return <h2 className="text-center mt-10 text-xl font-semibold text-red-600">{error}</h2>;
+  if (error) return (
+    <div className="text-center mt-10">
+      <h2 className="text-xl font-semibold text-red-600 mb-4">{error}</h2>
+      <button 
+        onClick={() => { setError(""); setLoading(true); fetchReports(); }}
+        className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+      >
+        Try Again
+      </button>
+    </div>
+  );
   
 
-
   // Get recent reports from state
-  const recentReports = reports.slice(0, 5);
+  const recentReports = (reports || []).slice(0, 5);
 
   // Get safety alerts
-  const safetyAlerts = accommodations
+  const safetyAlerts = (accommodations || [])
     .filter(acc => acc.safetyClassification !== 'Safe')
     .sort((a, b) => b.riskScore - a.riskScore);
 
   // Get user's role-based stats
-  const totalAccommodations = accommodations.length;
-  const highRiskCount = accommodations.filter(acc => acc.safetyClassification === 'High Risk').length;
-  const riskyCount = accommodations.filter(acc => acc.safetyClassification === 'Risky').length;
+  const totalAccommodations = (accommodations || []).length;
+  const highRiskCount = (accommodations || []).filter(acc => acc.safetyClassification === 'High Risk').length;
+  const riskyCount = (accommodations || []).filter(acc => acc.safetyClassification === 'Risky').length;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -164,17 +173,17 @@ export const Dashboard: React.FC = () => {
         <div className="bg-white p-6 rounded-lg shadow">
           <h2 className="text-xl font-semibold text-gray-900 mb-4">Safety Reports</h2>
           <div className="space-y-4">
-            {reports.length === 0 ? (
+            {(reports || []).length === 0 ? (
               <p className="text-gray-500 text-center py-4">No reports yet</p>
             ) : (
-              reports.map((report) => (
+              (reports || []).map((report) => (
                 <div key={report._id} className="border-b border-gray-200 pb-4 last:border-b-0">
                   <h3 className="font-medium text-gray-900">{report.accommodationName}</h3>
                   <p className="text-sm text-gray-600 mt-1">Issue: {report.issueType}</p>
                   <p className="text-sm text-gray-600">Description: {report.description}</p>
                   <div className="flex justify-between items-center mt-2">
                     <p className="text-xs text-gray-500">
-                      Date: {new Date(report.createdAt).toLocaleString()}
+                      Date: {report.createdAt ? new Date(report.createdAt).toLocaleString() : new Date().toLocaleString()}
                     </p>
                     {currentUserId && (
                       <UpvoteButton
@@ -194,7 +203,7 @@ export const Dashboard: React.FC = () => {
         <div className="bg-white p-6 rounded-lg shadow">
           <h2 className="text-xl font-semibold text-gray-900 mb-4">Safety Alerts</h2>
           <div className="space-y-4">
-            {safetyAlerts.slice(0, 5).map(accommodation => (
+            {(safetyAlerts || []).slice(0, 5).map(accommodation => (
               <div key={accommodation.id} className="border-b border-gray-200 pb-4 last:border-b-0">
                 <div className="flex justify-between items-start">
                   <div>

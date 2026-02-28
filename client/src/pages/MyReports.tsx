@@ -11,6 +11,23 @@ interface Image {
   publicId?: string;
 }
 
+interface Resolution {
+  description: string;
+  actionTaken: string;
+  images: Array<{ url: string; publicId: string }>;
+  resolvedBy?: { name: string } | string;
+  resolvedAt?: string;
+}
+
+interface Verification {
+  isVerified: boolean;
+  verifiedBy?: string;
+  verifiedAt?: string;
+  feedback?: string;
+  isDisputed: boolean;
+  disputeReason?: string;
+}
+
 interface Report {
   _id: string;
   accommodationName: string;
@@ -18,9 +35,12 @@ interface Report {
   description: string;
   images?: Image[];
   createdAt: string;
+  status?: string;
   upvotes?: number;
   upvotedBy?: string[];
   user?: string;
+  resolution?: Resolution;
+  verification?: Verification;
 }
 
 export default function MyReports() {
@@ -186,6 +206,34 @@ export default function MyReports() {
     }
   };
 
+  const handleVerify = async (id: string, accepted: boolean, feedbackOrReason: string) => {
+    const token = localStorage.getItem('token');
+    try {
+      const response = await fetch(`${API}/api/reports/${id}/verify`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          accepted,
+          feedback: accepted ? feedbackOrReason : '',
+          disputeReason: !accepted ? feedbackOrReason : ''
+        })
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        alert(accepted ? 'Resolution verified!' : 'Resolution disputed.');
+        fetchMyReports();
+      } else {
+        alert(data.message || 'Failed to verify');
+      }
+    } catch (err) {
+      alert('Error verifying resolution');
+    }
+  };
+
   if (loading) {
     return (
       <div className="container">
@@ -206,7 +254,7 @@ export default function MyReports() {
     <div className="container">
       <div className="my-reports-header">
         <h1>My Safety Reports</h1>
-        <p className="subtitle">Total Reports: {reports.length}</p>
+        <p className="subtitle">Total Reports: {(reports || []).length}</p>
       </div>
 
       {/* Edit Modal */}
@@ -310,7 +358,7 @@ export default function MyReports() {
         </div>
       )}
 
-      {reports.length === 0 ? (
+      { (reports || []).length === 0 ? (
         <div className="empty-state">
           <p>You haven't submitted any reports yet.</p>
           <button 
@@ -322,12 +370,13 @@ export default function MyReports() {
         </div>
       ) : (
         <div className="reports-grid">
-          {reports.map((report) => (
+          {(reports || []).map((report) => (
             <ReportCard
               key={report._id}
               report={report}
               onEdit={handleEdit}
               onDelete={handleDelete}
+              onVerify={handleVerify}  // ✅ THIS WAS MISSING!
               currentUserId={currentUserId}
             />
           ))}

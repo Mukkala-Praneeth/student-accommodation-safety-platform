@@ -10,8 +10,26 @@ const ReportSchema = new mongoose.Schema({
   }],
   status: {
     type: String,
-    enum: ['pending', 'approved', 'rejected'],
+    enum: ['pending', 'approved', 'rejected', 'resolved', 'verified', 'disputed'],
     default: 'pending'
+  },
+  resolution: {
+    description: { type: String, default: '' },
+    images: [{
+      url: { type: String },
+      publicId: { type: String }
+    }],
+    resolvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    resolvedAt: { type: Date },
+    actionTaken: { type: String, default: '' }
+  },
+  verification: {
+    isVerified: { type: Boolean, default: false },
+    verifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    verifiedAt: { type: Date },
+    feedback: { type: String, default: '' },
+    isDisputed: { type: Boolean, default: false },
+    disputeReason: { type: String, default: '' }
   },
   createdAt: {
     type: Date,

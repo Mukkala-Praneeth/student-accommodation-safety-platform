@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { ImageGallery } from '../components/ImageGallery';
+import { ImageUpload } from '../components/ImageUpload';
 import LocationPicker from '../components/LocationPicker';
 
 interface Stats {
@@ -29,6 +30,23 @@ interface Accommodation {
   createdAt: string;
 }
 
+interface Resolution {
+  description: string;
+  actionTaken: string;
+  images: Array<{ url: string; publicId: string }>;
+  resolvedBy?: { name: string } | string;
+  resolvedAt?: string;
+}
+
+interface Verification {
+  isVerified: boolean;
+  verifiedBy?: string;
+  verifiedAt?: string;
+  feedback?: string;
+  isDisputed: boolean;
+  disputeReason?: string;
+}
+
 interface Report {
   _id: string;
   accommodationName: string;
@@ -40,6 +58,8 @@ interface Report {
   counterStatus: string;
   createdAt: string;
   user: { name: string; email: string } | null;
+  resolution?: Resolution;
+  verification?: Verification;
 }
 
 interface CounterReport {
@@ -61,9 +81,11 @@ export default function OwnerDashboard() {
   const [reports, setReports] = useState<Report[]>([]);
   const [counterReports, setCounterReports] = useState<CounterReport[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   
   const [showAddModal, setShowAddModal] = useState(false);
   const [showCounterModal, setShowCounterModal] = useState(false);
+  const [showResolveModal, setShowResolveModal] = useState(false);
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
 
   const [newAccommodation, setNewAccommodation] = useState({
@@ -85,6 +107,13 @@ export default function OwnerDashboard() {
     explanation: '',
     evidenceDescription: ''
   });
+
+  const [resolutionForm, setResolutionForm] = useState({
+    description: '',
+    actionTaken: '',
+  });
+  const [resolutionImages, setResolutionImages] = useState<Array<{ url: string; publicId: string }>>([]);
+  const [isResolving, setIsResolving] = useState(false);
 
   const { user, loading: authLoading } = useAuth();
   const token = localStorage.getItem('token');
@@ -108,8 +137,13 @@ export default function OwnerDashboard() {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();
-      if (data.success) setStats(data.data);
+      if (data.success) {
+        setStats(data.data);
+      } else {
+        setError(data.message || 'Failed to fetch dashboard stats');
+      }
     } catch (err) {
+      setError('Error connecting to server');
       console.error('Error fetching stats');
     } finally {
       setLoading(false);
@@ -258,6 +292,41 @@ export default function OwnerDashboard() {
     }
   };
 
+  const handleResolveReport = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedReport) return;
+
+    setIsResolving(true);
+    try {
+      const res = await fetch(`${API}/api/owner/reports/${selectedReport._id}/resolve`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          ...resolutionForm,
+          images: resolutionImages
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert('Report marked as resolved!');
+        setShowResolveModal(false);
+        setSelectedReport(null);
+        setResolutionForm({ description: '', actionTaken: '' });
+        setResolutionImages([]);
+        fetchAll();
+      } else {
+        alert(data.message);
+      }
+    } catch (err) {
+      alert('Error resolving report');
+    } finally {
+      setIsResolving(false);
+    }
+  };
+
   const handleLogout = () => {
     localStorage.removeItem('token');
     navigate('/owner/login');
@@ -265,6 +334,22 @@ export default function OwnerDashboard() {
 
   if (loading) {
     return <div className="owner-loading">Loading dashboard...</div>;
+  }
+
+  if (error) {
+    return (
+      <div className="owner-dashboard">
+        <div className="error-state text-center py-20">
+          <p className="text-red-600 text-lg mb-4">{error}</p>
+          <button 
+            onClick={() => { setError(""); setLoading(true); fetchAll(); }}
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+          >
+            Try Again
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -281,13 +366,13 @@ export default function OwnerDashboard() {
           Overview
         </button>
         <button className={`owner-tab ${activeTab === 'accommodations' ? 'active' : ''}`} onClick={() => setActiveTab('accommodations')}>
-          My Accommodations ({accommodations.length})
+          My Accommodations ({(accommodations || []).length})
         </button>
         <button className={`owner-tab ${activeTab === 'reports' ? 'active' : ''}`} onClick={() => setActiveTab('reports')}>
-          Reports ({reports.length})
+          Reports ({(reports || []).length})
         </button>
         <button className={`owner-tab ${activeTab === 'counters' ? 'active' : ''}`} onClick={() => setActiveTab('counters')}>
-          Counter Reports ({counterReports.length})
+          Counter Reports ({(counterReports || []).length})
         </button>
       </div>
 
@@ -331,7 +416,7 @@ export default function OwnerDashboard() {
             <button onClick={() => setShowAddModal(true)} className="btn-add">+ Add Accommodation</button>
           </div>
 
-          {accommodations.length === 0 ? (
+          { (accommodations || []).length === 0 ? (
             <div className="empty-state">
               <p>No accommodations added yet.</p>
               <button onClick={() => setShowAddModal(true)} className="btn-add">Add Your First Accommodation</button>
@@ -406,12 +491,16 @@ export default function OwnerDashboard() {
           ) : (
             <div className="reports-list">
               {reports.map(report => (
-                <div key={report._id} className={`report-item ${report.isCountered ? 'countered' : ''}`}>
+                <div key={report._id} className={`report-item ${report.status}`}>
                   <div className="report-header">
                     <h3>{report.accommodationName}</h3>
                     <div className="report-badges">
                       <span className="issue-badge">{report.issueType}</span>
-                      <span className={`status-badge status-${report.status}`}>{report.status}</span>
+                      <span className={`status-badge status-${report.status}`}>
+                        {report.status === 'resolved' ? 'Awaiting Student Verification' : report.status}
+                      </span>
+                      {report.status === 'verified' && <span className="status-badge status-verified">Resolved & Verified ✅</span>}
+                      {report.status === 'disputed' && <span className="status-badge status-disputed">Disputed ⚠️</span>}
                       {report.isCountered && (
                         <span className={`counter-badge counter-${report.counterStatus}`}>
                           Counter: {report.counterStatus}
@@ -425,14 +514,47 @@ export default function OwnerDashboard() {
                     <span>Reported by: {report.user?.name || 'Anonymous'}</span>
                     <span>{new Date(report.createdAt).toLocaleDateString()}</span>
                   </div>
-                  {!report.isCountered && report.status !== 'rejected' && (
-                    <button
-                      onClick={() => { setSelectedReport(report); setShowCounterModal(true); }}
-                      className="btn-counter"
-                    >
-                      🛡️ Counter This Report
-                    </button>
+
+                  {report.resolution && (
+                    <div className="resolution-details">
+                      <h4>Owner Resolution</h4>
+                      <p><strong>Action Taken:</strong> {report.resolution.actionTaken}</p>
+                      <p><strong>Description:</strong> {report.resolution.description}</p>
+                      <ImageGallery images={report.resolution.images} />
+                    </div>
                   )}
+
+                  {report.verification && report.status === 'verified' && report.verification.feedback && (
+                    <div className="verification-details">
+                      <p><strong>Student Feedback:</strong> {report.verification.feedback}</p>
+                    </div>
+                  )}
+
+                  {report.verification && report.status === 'disputed' && report.verification.disputeReason && (
+                    <div className="verification-details dispute">
+                      <p><strong>Dispute Reason:</strong> {report.verification.disputeReason}</p>
+                    </div>
+                  )}
+
+                  <div className="report-actions">
+                    {!report.isCountered && report.status !== 'rejected' && report.status !== 'resolved' && report.status !== 'verified' && (
+                      <button
+                        onClick={() => { setSelectedReport(report); setShowCounterModal(true); }}
+                        className="btn-counter"
+                      >
+                        🛡️ Counter This Report
+                      </button>
+                    )}
+                    
+                    {(report.status === 'approved' || report.status === 'disputed') && (
+                      <button
+                        onClick={() => { setSelectedReport(report); setShowResolveModal(true); }}
+                        className="btn-resolve"
+                      >
+                        ✅ Resolve Issue
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
@@ -619,6 +741,63 @@ export default function OwnerDashboard() {
               <div className="modal-actions">
                 <button type="submit" className="btn-primary">Submit Counter Report</button>
                 <button type="button" onClick={() => { setShowCounterModal(false); setSelectedReport(null); }} className="btn-secondary">Cancel</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Resolve Report Modal */}
+      {showResolveModal && selectedReport && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <h2>Resolve Safety Issue</h2>
+            <p className="modal-subtitle">
+              Provide details about how you fixed the issue for <strong>{selectedReport.accommodationName}</strong>
+            </p>
+            <form onSubmit={handleResolveReport}>
+              <div className="form-group">
+                <label>Action Taken <span className="text-red-500">*</span></label>
+                <input
+                  type="text"
+                  value={resolutionForm.actionTaken}
+                  onChange={(e) => setResolutionForm({...resolutionForm, actionTaken: e.target.value})}
+                  placeholder="e.g., Replaced water purifier, Fixed broken lock"
+                  required
+                />
+              </div>
+              <div className="form-group">
+                <label>Detailed Description <span className="text-red-500">*</span></label>
+                <textarea
+                  value={resolutionForm.description}
+                  onChange={(e) => setResolutionForm({...resolutionForm, description: e.target.value})}
+                  placeholder="Describe what was done to fix this issue (min 10 chars)..."
+                  rows={4}
+                  required
+                  minLength={10}
+                />
+              </div>
+              
+              <div className="form-group">
+                <label>Proof Images (Optional)</label>
+                <ImageUpload 
+                  onImagesChange={setResolutionImages} 
+                  uploadedImages={resolutionImages}
+                />
+              </div>
+
+              <div className="modal-actions">
+                <button type="submit" className="btn-primary" disabled={isResolving}>
+                  {isResolving ? 'Submitting...' : 'Submit Resolution'}
+                </button>
+                <button 
+                  type="button" 
+                  onClick={() => { setShowResolveModal(false); setSelectedReport(null); setResolutionImages([]); }} 
+                  className="btn-secondary"
+                  disabled={isResolving}
+                >
+                  Cancel
+                </button>
               </div>
             </form>
           </div>

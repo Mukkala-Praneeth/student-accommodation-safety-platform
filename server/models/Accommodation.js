@@ -74,6 +74,30 @@ const AccommodationSchema = new mongoose.Schema({
   longitude: {
     type: Number,
     default: null
+  },
+  trustScore: {
+    type: Number,
+    default: 100,
+    min: 0,
+    max: 100
+  },
+  trustScoreLabel: {
+    type: String,
+    enum: ['Safe', 'Caution', 'Unsafe'],
+    default: 'Safe'
+  },
+  trustScoreColor: {
+    type: String,
+    enum: ['green', 'yellow', 'red'],
+    default: 'green'
+  },
+  totalReports: {
+    type: Number,
+    default: 0
+  },
+  lastScoreUpdate: {
+    type: Date,
+    default: Date.now
   }
 });
 
