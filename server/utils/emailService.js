@@ -8,12 +8,79 @@ const transporter = nodemailer.createTransport({
   }
 });
 
+const emailTemplates = require('./emailTemplates');
+
 transporter.verify()
   .then(() => console.log('Email service ready'))
   .catch(err => console.error('Email service error:', err.message));
 
 function generateOTP() {
   return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
+// Generic email sender
+async function sendEmail(to, subject, htmlContent) {
+  try {
+    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+      console.error('Email credentials not configured');
+      return { success: false, message: 'Email not configured' };
+    }
+
+    const mailOptions = {
+      from: `"Student Safety Platform" <${process.env.EMAIL_USER}>`,
+      to,
+      subject,
+      html: htmlContent
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log('Email sent:', info.messageId);
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    console.error('Email sending error:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// Specific email senders
+async function sendWelcomeEmail(userEmail, userName, verificationLink) {
+  const html = emailTemplates.welcomeEmail(userName, verificationLink);
+  return sendEmail(userEmail, 'Welcome to Student Accommodation Safety Platform! 🎓', html);
+}
+
+async function sendReportApprovedEmail(userEmail, userName, accommodationName, reportId, viewLink) {
+  const html = emailTemplates.reportApprovedEmail(userName, accommodationName, reportId, viewLink);
+  return sendEmail(userEmail, '✅ Your safety report has been approved', html);
+}
+
+async function sendReportRejectedEmail(userEmail, userName, accommodationName, reason) {
+  const html = emailTemplates.reportRejectedEmail(userName, accommodationName, reason);
+  return sendEmail(userEmail, '❌ Your safety report was not approved', html);
+}
+
+async function sendOwnerNewReportEmail(ownerEmail, ownerName, accommodationName, issueType, reportLink) {
+  const html = emailTemplates.ownerNewReportEmail(ownerName, accommodationName, issueType, reportLink);
+  return sendEmail(ownerEmail, '🚨 New safety report on your property', html);
+}
+
+async function sendStudentResolvedEmail(studentEmail, studentName, accommodationName, resolutionDetails, verifyLink) {
+  const html = emailTemplates.studentResolvedEmail(studentName, accommodationName, resolutionDetails, verifyLink);
+  return sendEmail(studentEmail, '🔧 Owner has resolved your report', html);
+}
+
+async function sendOwnerVerifiedEmail(ownerEmail, ownerName, accommodationName, feedback, trustScoreChange) {
+  const html = emailTemplates.ownerVerifiedEmail(ownerName, accommodationName, feedback, trustScoreChange);
+  return sendEmail(ownerEmail, '✅ Student verified your resolution - Trust score improved!', html);
+}
+
+async function sendOwnerDisputedEmail(ownerEmail, ownerName, accommodationName, disputeReason, resolveAgainLink) {
+  const html = emailTemplates.ownerDisputedEmail(ownerName, accommodationName, disputeReason, resolveAgainLink);
+  return sendEmail(ownerEmail, '⚠️ Student disputed your resolution', html);
+}
+
+async function sendPasswordResetSuccessEmail(userEmail, userName) {
+  const html = emailTemplates.passwordResetSuccessEmail(userName);
+  return sendEmail(userEmail, '🔒 Your password has been reset', html);
 }
 
 async function sendOTPEmail(to, otp, type) {
@@ -73,4 +140,15 @@ async function sendOTPEmail(to, otp, type) {
   }
 }
 
-module.exports = { generateOTP, sendOTPEmail };
+module.exports = {
+  generateOTP,
+  sendOTPEmail,
+  sendWelcomeEmail,
+  sendReportApprovedEmail,
+  sendReportRejectedEmail,
+  sendOwnerNewReportEmail,
+  sendStudentResolvedEmail,
+  sendOwnerVerifiedEmail,
+  sendOwnerDisputedEmail,
+  sendPasswordResetSuccessEmail
+};

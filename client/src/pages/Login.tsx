@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { FiLogIn, FiMail, FiLock } from 'react-icons/fi';
+import { FiMail, FiLock, FiShield, FiArrowRight, FiCheckCircle } from 'react-icons/fi';
 
 export const Login: React.FC = () => {
-  const API = import.meta.env.VITE_API_URL || 'http://localhost:5000';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -37,7 +36,6 @@ export const Login: React.FC = () => {
         navigate('/dashboard');
       }
     } catch (err: any) {
-      // Check if email needs verification
       if (err.message?.includes('verify') || err.message?.includes('not verified')) {
         navigate('/verify-email', { state: { email: email } });
         return;
@@ -49,93 +47,164 @@ export const Login: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
-        <div>
-          <div className="flex justify-center">
-            <FiLogIn className="h-12 w-12 text-blue-600" />
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-indigo-900 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 relative overflow-hidden">
+      {/* Animated Background Elements */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-500 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse"></div>
+        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-purple-500 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse" style={{ animationDelay: '1s' }}></div>
+      </div>
+
+      <div className="max-w-4xl w-full flex bg-white rounded-3xl shadow-2xl overflow-hidden relative z-10">
+        {/* Left Side: Illustration/Branding */}
+        <div className="hidden lg:flex lg:w-1/2 bg-blue-600 p-12 text-white flex-col justify-between relative">
+          <div className="absolute inset-0 bg-gradient-to-br from-blue-600 to-indigo-700 opacity-90"></div>
+          <div className="relative z-10">
+            <Link to="/" className="flex items-center space-x-2 text-2xl font-bold mb-12">
+              <FiShield className="h-8 w-8 text-yellow-400" />
+              <span>SafetyFirst</span>
+            </Link>
+            
+            <h2 className="text-4xl font-extrabold mb-6 leading-tight">
+              Join the community of <span className="text-yellow-400">10,000+</span> students making safer choices.
+            </h2>
+            
+            <div className="space-y-4">
+              {[
+                "Verified safety reports with evidence",
+                "Real trust scores for every PG/Hostel",
+                "Direct accountability from owners"
+              ].map((item, i) => (
+                <div key={i} className="flex items-center space-x-3">
+                  <FiCheckCircle className="text-green-400 flex-shrink-0" />
+                  <span className="text-blue-50/90 font-medium">{item}</span>
+                </div>
+              ))}
+            </div>
           </div>
-          <h2 className="mt-6 text-center text-3xl font-bold text-gray-900">
-            Sign in to your account
-          </h2>
-          <p className="mt-2 text-center text-sm text-gray-600">
-            Or{' '}
-            <a href="/register" className="font-medium text-blue-600 hover:text-blue-500">
-              create a new account
-            </a>
-          </p>
+          
+          <div className="relative z-10">
+            <p className="text-blue-100 text-sm">
+              "Found water quality issues in 3 PGs near my college BEFORE signing any lease. This platform saved me from a nightmare."
+            </p>
+            <p className="mt-2 font-bold text-yellow-400">— Priya S., Student</p>
+          </div>
         </div>
-        <form className="mt-8 space-y-6 flex flex-col" onSubmit={handleSubmit}>
-          {error && (
-            <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded">
-              {error}
-            </div>
-          )}
-          <div className="rounded-md shadow-sm -space-y-px">
-            <div>
-              <label htmlFor="email-address" className="sr-only">Email address</label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <FiMail className="h-5 w-5 text-gray-400" />
-                </div>
-                <input
-                  id="email-address"
-                  name="email"
-                  type="email"
-                  autoComplete="email"
-                  required
-                  className="appearance-none rounded-none relative block w-full pl-10 px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
-                  placeholder="Email address"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
-              </div>
-            </div>
-            <div>
-              <label htmlFor="password" className="sr-only">Password</label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <FiLock className="h-5 w-5 text-gray-400" />
-                </div>
-                <input
-                  id="password"
-                  name="password"
-                  type="password"
-                  autoComplete="current-password"
-                  required
-                  className="appearance-none rounded-none relative block w-full pl-10 px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
-                  placeholder="Password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-              </div>
-            </div>
+
+        {/* Right Side: Form */}
+        <div className="w-full lg:w-1/2 p-8 sm:p-12">
+          <div className="mb-10 text-center lg:text-left">
+            <h2 className="text-3xl font-extrabold text-gray-900 mb-2">
+              Welcome Back, Safety Champion
+            </h2>
+            <p className="text-gray-500">
+              Access your personalized safety dashboard
+            </p>
           </div>
 
-          <div className="auth-footer">
-            <p>Are you an accommodation owner? <Link to="/owner/login">Owner Login</Link></p>
-          </div>
+          <form className="space-y-6" onSubmit={handleSubmit}>
+            {error && (
+              <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-xl text-sm flex items-center">
+                <FiShield className="mr-2 h-4 w-4 rotate-180" />
+                {error}
+              </div>
+            )}
+            
+            <div className="space-y-4">
+              <div>
+                <label htmlFor="email-address" className="block text-sm font-semibold text-gray-700 mb-1">
+                  Your registered email
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <FiMail className="h-5 w-5 text-gray-400" />
+                  </div>
+                  <input
+                    id="email-address"
+                    name="email"
+                    type="email"
+                    autoComplete="email"
+                    required
+                    className="block w-full pl-10 px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all outline-none text-gray-900 placeholder-gray-400"
+                    placeholder="name@university.edu"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
+                </div>
+              </div>
 
-          <div>
+              <div>
+                <div className="flex justify-between items-center mb-1">
+                  <label htmlFor="password" className="block text-sm font-semibold text-gray-700">
+                    Password
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => navigate('/forgot-password')}
+                    className="text-blue-600 hover:text-blue-700 text-xs font-bold"
+                  >
+                    Forgot?
+                  </button>
+                </div>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <FiLock className="h-5 w-5 text-gray-400" />
+                  </div>
+                  <input
+                    id="password"
+                    name="password"
+                    type="password"
+                    autoComplete="current-password"
+                    required
+                    className="block w-full pl-10 px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all outline-none text-gray-900 placeholder-gray-400"
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
+                </div>
+              </div>
+            </div>
+
             <button
               type="submit"
               disabled={loading}
-              className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+              className="group w-full flex justify-center items-center py-4 px-6 border border-transparent text-lg font-bold rounded-xl text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 transition-all transform hover:scale-[1.02] active:scale-[0.98]"
             >
-              {loading ? 'Signing in...' : 'Sign in'}
+              {loading ? (
+                <span className="flex items-center">
+                  <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Processing...
+                </span>
+              ) : (
+                <>
+                  Access Dashboard
+                  <FiArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
+                </>
+              )}
             </button>
-          </div>
+          </form>
 
-          <div className="text-center mt-3">
-            <button
-              type="button"
-              onClick={() => navigate('/forgot-password')}
-              className="text-blue-600 hover:text-blue-800 text-sm font-medium"
-            >
-              Forgot Password?
-            </button>
+          <div className="mt-8 text-center space-y-4">
+            <p className="text-gray-600 text-sm">
+              Don't have an account?{' '}
+              <Link to="/register" className="text-blue-600 font-bold hover:underline">
+                Join 10,000+ students
+              </Link>
+            </p>
+            
+            <div className="pt-6 border-t border-gray-100 flex flex-col items-center space-y-3">
+              <div className="inline-flex items-center px-3 py-1 rounded-full bg-green-50 text-green-700 text-xs font-semibold">
+                <FiShield className="h-3 w-3 mr-1" />
+                🔒 Your data is encrypted and secure
+              </div>
+              <Link to="/owner/login" className="text-gray-500 hover:text-blue-600 text-sm font-medium transition-colors">
+                Are you a property owner? <span className="text-blue-600">Login here</span>
+              </Link>
+            </div>
           </div>
-        </form>
+        </div>
       </div>
     </div>
   );

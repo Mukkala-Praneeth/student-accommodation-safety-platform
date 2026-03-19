@@ -1,815 +1,307 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
-import { ImageGallery } from '../components/ImageGallery';
+import { useNavigate } from 'react-router-dom';
+import { 
+  FiShield, FiUsers, FiFileText, FiCheckCircle, FiAlertTriangle, 
+  FiTrendingUp, FiSearch, FiFilter, FiMoreVertical, FiTrash2, FiEye
+} from 'react-icons/fi';
 
 interface Stats {
+  totalUsers: number;
+  totalAccommodations: number;
   totalReports: number;
   pendingReports: number;
-  approvedReports: number;
-  rejectedReports: number;
-  totalUsers: number;
-  bannedUsers: number;
-  issueStats: { _id: string; count: number }[];
-}
-
-interface Resolution {
-  description: string;
-  actionTaken: string;
-  images: Array<{ url: string; publicId?: string }>;
-  resolvedBy?: { name: string } | string;
-  resolvedAt?: string;
-}
-
-interface Verification {
-  isVerified: boolean;
-  verifiedBy?: string;
-  verifiedAt?: string;
-  feedback?: string;
-  isDisputed: boolean;
-  disputeReason?: string;
 }
 
 interface Report {
   _id: string;
-  accommodationName: string;
-  issueType: string;
+  category: string;
   description: string;
-  images?: Array<{ url: string; publicId?: string }>;
   status: string;
   createdAt: string;
-  user: { name: string; email: string } | null;
-  resolution?: Resolution;
-  verification?: Verification;
-}
-
-interface User {
-  _id: string;
-  name: string;
-  email: string;
-  role: string;
-  isBanned: boolean;
-  createdAt: string;
+  userId: {
+    name: string;
+  };
+  accommodationId: {
+    name: string;
+  };
 }
 
 export default function AdminDashboard() {
-  const API = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-  const location = useLocation();
-  const queryParams = new URLSearchParams(location.search);
-  const initialTab = (queryParams.get('tab') as any) || 'overview';
-
-  const [activeTab, setActiveTab] = useState<'overview' | 'reports' | 'users' | 'counterReports'>(initialTab);
   const [stats, setStats] = useState<Stats | null>(null);
   const [reports, setReports] = useState<Report[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
-  const [adminCounterReports, setAdminCounterReports] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [expandedReportId, setExpandedReportId] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [filter, setFilter] = useState('all');
+  const [searchTerm, setSearchTerm] = useState('');
+  
   const navigate = useNavigate();
-
-  const { user, loading: authLoading } = useAuth();
-  const token = localStorage.getItem('token');
+  const API = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
   useEffect(() => {
-    if (!authLoading && user && user.role === 'admin') {
-      fetchStats();
-      fetchReports();
-      fetchUsers();
-      fetchAdminCounterReports();
+    const token = localStorage.getItem('token');
+    const role = localStorage.getItem('userRole');
+    
+    if (!token || role !== 'admin') {
+      navigate('/login');
+      return;
     }
-  }, [authLoading, user]);
+    
+    fetchAdminData();
+  }, []);
 
-  const fetchStats = async () => {
+  const fetchAdminData = async () => {
+    const token = localStorage.getItem('token');
     try {
-      const res = await fetch(`${API}/api/admin/stats`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (data.success) {
-        setStats(data.data);
-      } else {
-        setError(data.message);
-      }
+      const [statsRes, reportsRes] = await Promise.all([
+        fetch(`${API}/api/admin/stats`, { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch(`${API}/api/admin/reports`, { headers: { 'Authorization': `Bearer ${token}` } })
+      ]);
+      
+      const statsData = await statsRes.json();
+      const reportsData = await reportsRes.json();
+      
+      if (statsData.success) setStats(statsData.data);
+      if (reportsData.success) setReports(reportsData.data);
     } catch (err) {
-      setError('Error fetching stats');
+      console.error('Error fetching admin data:', err);
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchReports = async () => {
+  const updateReportStatus = async (id: string, status: string) => {
+    const token = localStorage.getItem('token');
     try {
-      const res = await fetch(`${API}/api/admin/reports`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (data.success) {
-        setReports(data.data);
-      }
-    } catch (err) {
-      console.error('Error fetching reports');
-    }
-  };
-
-  const fetchUsers = async () => {
-    try {
-      const res = await fetch(`${API}/api/admin/users`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (data.success) {
-        setUsers(data.data);
-      }
-    } catch (err) {
-      console.error('Error fetching users');
-    }
-  };
-
-  const fetchAdminCounterReports = async () => {
-    try {
-      const res = await fetch(`${API}/api/admin/counter-reports`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (data.success) {
-        setAdminCounterReports(data.data);
-      }
-    } catch (err) {
-      console.error('Error fetching counter reports');
-    }
-  };
-
-  const updateReportStatus = async (reportId: string, status: string) => {
-    try {
-      const res = await fetch(`${API}/api/admin/reports/${reportId}/status`, {
+      const response = await fetch(`${API}/api/admin/reports/${id}`, {
         method: 'PUT',
-        headers: {
+        headers: { 
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({ status })
       });
-      const data = await res.json();
-      if (data.success) {
-        alert(`Report ${status} successfully!`);
-        fetchReports();
-        fetchStats();
-      } else {
-        alert(data.message);
+      
+      if (response.ok) {
+        setReports(reports.map(r => r._id === id ? { ...r, status } : r));
       }
     } catch (err) {
-      alert('Error updating report');
+      console.error('Error updating report:', err);
     }
   };
 
-  const deleteReport = async (reportId: string) => {
-    if (!window.confirm('Are you sure you want to delete this report?')) return;
+  const filteredReports = reports.filter(r => {
+    const matchesFilter = filter === 'all' || r.status === filter;
+    const matchesSearch = r.accommodationId.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                          r.description.toLowerCase().includes(searchTerm.toLowerCase());
+    return matchesFilter && matchesSearch;
+  });
 
-    try {
-      const res = await fetch(`${API}/api/admin/reports/${reportId}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (data.success) {
-        alert('Report deleted successfully!');
-        fetchReports();
-        fetchStats();
-      } else {
-        alert(data.message);
-      }
-    } catch (err) {
-      alert('Error deleting report');
-    }
-  };
-
-  const toggleBanUser = async (userId: string, currentlyBanned: boolean) => {
-    const action = currentlyBanned ? 'unban' : 'ban';
-    if (!window.confirm(`Are you sure you want to ${action} this user?`)) return;
-
-    try {
-      const res = await fetch(`${API}/api/admin/users/${userId}/ban`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ isBanned: !currentlyBanned })
-      });
-      const data = await res.json();
-      if (data.success) {
-        alert(data.message);
-        fetchUsers();
-        fetchStats();
-      } else {
-        alert(data.message);
-      }
-    } catch (err) {
-      alert('Error updating user');
-    }
-  };
-
-  const handleReviewCounter = async (counterId: string, status: string) => {
-    const adminNotes = prompt(`Add notes (optional) for this ${status} decision:`);
-
-    try {
-      const res = await fetch(`${API}/api/admin/counter-reports/${counterId}`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ status, adminNotes: adminNotes || '' })
-      });
-      const data = await res.json();
-      if (data.success) {
-        alert(`Counter report ${status} successfully!`);
-        fetchAdminCounterReports();
-        fetchStats();
-        fetchReports();
-      } else {
-        alert(data.message);
-      }
-    } catch (err) {
-      alert('Error reviewing counter report');
-    }
-  };
-
-  // NEW: Reopen disputed report for owner to resolve again
-  const handleReopenReport = async (reportId: string) => {
-    if (!window.confirm('Reopen this report for the owner to resolve again?')) return;
-
-    try {
-      const res = await fetch(`${API}/api/admin/reports/${reportId}/reopen`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      const data = await res.json();
-      if (data.success) {
-        alert('Report reopened! Owner can now submit a new resolution.');
-        fetchReports();
-        fetchStats();
-      } else {
-        alert(data.message);
-      }
-    } catch (err) {
-      alert('Error reopening report');
-    }
-  };
-
-  // Get status badge class with new statuses
-  const getStatusBadgeClass = (status: string): string => {
-    const classes: { [key: string]: string } = {
-      'pending': 'status-pending',
-      'approved': 'status-approved',
-      'rejected': 'status-rejected',
-      'resolved': 'status-resolved',
-      'verified': 'status-verified',
-      'disputed': 'status-disputed'
-    };
-    return classes[status] || 'status-pending';
-  };
-
-  // Get status display text
-  const getStatusDisplayText = (status: string): string => {
-    const texts: { [key: string]: string } = {
-      'pending': '⏳ Pending',
-      'approved': '✅ Approved',
-      'rejected': '❌ Rejected',
-      'resolved': '🔧 Resolved (Awaiting Verification)',
-      'verified': '✅ Verified & Closed',
-      'disputed': '⚠️ Disputed'
-    };
-    return texts[status] || status;
-  };
-
-  // Filter reports by status
-  const filteredReports = statusFilter === 'all' 
-    ? reports 
-    : reports.filter(r => r.status === statusFilter);
-
-  // Count reports by status
-  const getStatusCount = (status: string): number => {
-    return reports.filter(r => r.status === status).length;
-  };
-
-  if (loading) {
-    return <div className="admin-loading">Loading admin dashboard...</div>;
-  }
-
-  if (error) {
-    return <div className="admin-error">{error}</div>;
-  }
+  if (loading) return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-slate-900"></div>
+    </div>
+  );
 
   return (
-    <div className="admin-dashboard">
-      <div className="admin-header">
-        <h1>Admin Dashboard</h1>
-        <p>Manage reports, users, and resolutions</p>
-      </div>
-
-      <div className="admin-tabs">
-        <button
-          className={`admin-tab ${activeTab === 'overview' ? 'active' : ''}`}
-          onClick={() => setActiveTab('overview')}
-        >
-          Overview
-        </button>
-        <button
-          className={`admin-tab ${activeTab === 'reports' ? 'active' : ''}`}
-          onClick={() => setActiveTab('reports')}
-        >
-          Reports ({reports.length})
-        </button>
-        <button
-          className={`admin-tab ${activeTab === 'users' ? 'active' : ''}`}
-          onClick={() => setActiveTab('users')}
-        >
-          Users ({users.length})
-        </button>
-        <button
-          className={`admin-tab ${activeTab === 'counterReports' ? 'active' : ''}`}
-          onClick={() => setActiveTab('counterReports')}
-        >
-          Counter Reports ({adminCounterReports.filter(c => c.status === 'pending').length})
-        </button>
-      </div>
-
-      {activeTab === 'overview' && stats && (
-        <div className="admin-overview">
-          <div className="stats-grid">
-            <div className="stat-card">
-              <div className="stat-info">
-                <h3>{stats.totalReports}</h3>
-                <p>Total Reports</p>
+    <div className="min-h-screen bg-gray-50 pb-20">
+      {/* Header */}
+      <div className="bg-slate-900 text-white pt-12 pb-32">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-red-600 rounded-2xl shadow-lg shadow-red-900/20">
+                <FiShield className="h-8 w-8" />
+              </div>
+              <div>
+                <h1 className="text-3xl font-black tracking-tight">Platform Moderation Center</h1>
+                <p className="text-slate-400 font-bold">Zencoder Admin Access Restricted</p>
               </div>
             </div>
-            <div className="stat-card pending">
-              <div className="stat-info">
-                <h3>{stats.pendingReports}</h3>
-                <p>Pending</p>
-              </div>
-            </div>
-            <div className="stat-card approved">
-              <div className="stat-info">
-                <h3>{stats.approvedReports}</h3>
-                <p>Approved</p>
-              </div>
-            </div>
-            <div className="stat-card rejected">
-              <div className="stat-info">
-                <h3>{stats.rejectedReports}</h3>
-                <p>Rejected</p>
-              </div>
-            </div>
-            <div className="stat-card resolved">
-              <div className="stat-info">
-                <h3>{getStatusCount('resolved')}</h3>
-                <p>Resolved</p>
-              </div>
-            </div>
-            <div className="stat-card verified">
-              <div className="stat-info">
-                <h3>{getStatusCount('verified')}</h3>
-                <p>Verified</p>
-              </div>
-            </div>
-            <div className="stat-card disputed">
-              <div className="stat-info">
-                <h3>{getStatusCount('disputed')}</h3>
-                <p>Disputed</p>
-              </div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-info">
-                <h3>{stats.totalUsers}</h3>
-                <p>Total Users</p>
-              </div>
-            </div>
-            <div className="stat-card banned">
-              <div className="stat-info">
-                <h3>{stats.bannedUsers}</h3>
-                <p>Banned Users</p>
-              </div>
+            <div className="flex gap-3">
+              <button className="bg-white/10 hover:bg-white/20 px-6 py-3 rounded-xl font-bold transition-all border border-white/10">Export Data</button>
+              <button className="bg-white text-slate-900 px-6 py-3 rounded-xl font-bold shadow-lg transition-all">Bulk Actions</button>
             </div>
           </div>
 
-          <div className="issue-stats">
-            <h2>Reports by Issue Type</h2>
-            <div className="issue-bars">
-              {stats.issueStats.map((issue) => (
-                <div key={issue._id} className="issue-bar">
-                  <span className="issue-name">{issue._id}</span>
-                  <div className="bar-container">
-                    <div
-                      className="bar-fill"
-                      style={{ width: `${(issue.count / stats.totalReports) * 100}%` }}
-                    ></div>
+          {/* Top Stats */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mt-12">
+            {[
+              { label: 'Total Users', value: stats?.totalUsers, icon: <FiUsers />, color: 'text-blue-400' },
+              { label: 'Accommodations', value: stats?.totalAccommodations, icon: <FiFileText />, color: 'text-emerald-400' },
+              { label: 'Total Reports', value: stats?.totalReports, icon: <FiFileText />, color: 'text-purple-400' },
+              { label: 'Pending Review', value: stats?.pendingReports, icon: <FiAlertTriangle />, color: 'text-red-400' }
+            ].map((stat, i) => (
+              <div key={i} className="bg-white/5 backdrop-blur-md border border-white/10 p-6 rounded-3xl">
+                <div className="flex justify-between items-start mb-4">
+                  <div className={`p-3 rounded-2xl bg-white/5 ${stat.color}`}>
+                    {stat.icon}
                   </div>
-                  <span className="issue-count">{issue.count}</span>
                 </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'reports' && (
-        <div className="admin-reports">
-          {/* Status Filter */}
-          <div className="reports-filter" style={{ marginBottom: '1rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-            <button 
-              className={`filter-btn ${statusFilter === 'all' ? 'active' : ''}`}
-              onClick={() => setStatusFilter('all')}
-              style={{ 
-                padding: '0.5rem 1rem', 
-                borderRadius: '0.5rem', 
-                border: statusFilter === 'all' ? '2px solid #3b82f6' : '1px solid #d1d5db',
-                background: statusFilter === 'all' ? '#eff6ff' : '#fff',
-                cursor: 'pointer'
-              }}
-            >
-              All ({reports.length})
-            </button>
-            {['pending', 'approved', 'resolved', 'verified', 'disputed', 'rejected'].map(status => (
-              <button 
-                key={status}
-                className={`filter-btn ${statusFilter === status ? 'active' : ''}`}
-                onClick={() => setStatusFilter(status)}
-                style={{ 
-                  padding: '0.5rem 1rem', 
-                  borderRadius: '0.5rem', 
-                  border: statusFilter === status ? '2px solid #3b82f6' : '1px solid #d1d5db',
-                  background: statusFilter === status ? '#eff6ff' : '#fff',
-                  cursor: 'pointer',
-                  textTransform: 'capitalize'
-                }}
-              >
-                {status} ({getStatusCount(status)})
-              </button>
+                <p className="text-3xl font-black text-white">{stat.value || 0}</p>
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mt-1">{stat.label}</p>
+              </div>
             ))}
           </div>
+        </div>
+      </div>
 
-          {/* Reports List - Card View for better details */}
-          <div className="reports-list" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            {filteredReports.length === 0 ? (
-              <div className="empty-state" style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>
-                <p>No reports found for this filter.</p>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-16">
+        <div className="bg-white rounded-[2.5rem] shadow-2xl shadow-slate-200/50 border border-slate-100 overflow-hidden">
+          
+          {/* Toolbar */}
+          <div className="p-8 border-b border-slate-50 flex flex-col lg:flex-row justify-between items-center gap-6">
+            <h2 className="text-xl font-black text-slate-900 whitespace-nowrap">Reports Requiring Review</h2>
+            
+            <div className="flex flex-col sm:flex-row items-center gap-4 w-full lg:w-auto">
+              {/* Search */}
+              <div className="relative w-full sm:w-64 group">
+                <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-slate-900 transition-colors" />
+                <input 
+                  type="text" 
+                  placeholder="Search reports..."
+                  className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none focus:bg-white focus:border-slate-300 transition-all text-sm font-semibold"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
               </div>
-            ) : (
-              filteredReports.map((report) => (
-                <div 
-                  key={report._id} 
-                  className={`report-card status-${report.status}`}
-                  style={{ 
-                    border: '1px solid #e5e7eb', 
-                    borderRadius: '0.75rem', 
-                    padding: '1rem',
-                    background: '#fff',
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
-                  }}
-                >
-                  {/* Report Header */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
-                    <div>
-                      <h3 style={{ fontSize: '1.1rem', fontWeight: '600', margin: '0 0 0.25rem 0' }}>
-                        {report.accommodationName}
-                      </h3>
-                      <span style={{ 
-                        display: 'inline-block',
-                        padding: '0.25rem 0.5rem', 
-                        borderRadius: '0.25rem', 
-                        fontSize: '0.75rem',
-                        fontWeight: '500',
-                        background: '#fee2e2',
-                        color: '#991b1b'
-                      }}>
-                        {report.issueType}
-                      </span>
-                    </div>
-                    <span 
-                      className={`status-badge ${getStatusBadgeClass(report.status)}`}
-                      style={{
-                        padding: '0.25rem 0.75rem',
-                        borderRadius: '1rem',
-                        fontSize: '0.75rem',
-                        fontWeight: '600',
-                        background: 
-                          report.status === 'pending' ? '#fef3c7' :
-                          report.status === 'approved' ? '#dbeafe' :
-                          report.status === 'resolved' ? '#fef9c3' :
-                          report.status === 'verified' ? '#d1fae5' :
-                          report.status === 'disputed' ? '#fee2e2' :
-                          '#fee2e2',
-                        color:
-                          report.status === 'pending' ? '#92400e' :
-                          report.status === 'approved' ? '#1e40af' :
-                          report.status === 'resolved' ? '#854d0e' :
-                          report.status === 'verified' ? '#065f46' :
-                          report.status === 'disputed' ? '#991b1b' :
-                          '#991b1b'
-                      }}
-                    >
-                      {getStatusDisplayText(report.status)}
-                    </span>
-                  </div>
 
-                  {/* Report Meta */}
-                  <div style={{ fontSize: '0.875rem', color: '#6b7280', marginBottom: '0.5rem' }}>
-                    <span>👤 {report.user?.name || 'Anonymous'}</span>
-                    <span style={{ margin: '0 0.5rem' }}>•</span>
-                    <span>📅 {new Date(report.createdAt).toLocaleDateString()}</span>
-                  </div>
-
-                  {/* Report Description */}
-                  <p style={{ 
-                    color: '#374151', 
-                    marginBottom: '0.75rem',
-                    lineHeight: '1.5'
-                  }}>
-                    {report.description}
-                  </p>
-
-                  {/* Report Images */}
-                  {report.images && report.images.length > 0 && (
-                    <div style={{ marginBottom: '0.75rem' }}>
-                      <ImageGallery images={report.images} />
-                    </div>
-                  )}
-
-                  {/* Resolution Section - Show if report has resolution */}
-                  {report.resolution && report.resolution.actionTaken && (
-                    <div style={{ 
-                      background: '#eff6ff', 
-                      border: '1px solid #bfdbfe',
-                      borderRadius: '0.5rem', 
-                      padding: '0.75rem',
-                      marginBottom: '0.75rem'
-                    }}>
-                      <h4 style={{ fontSize: '0.875rem', fontWeight: '600', color: '#1e40af', margin: '0 0 0.5rem 0' }}>
-                        🔧 Owner's Resolution
-                      </h4>
-                      <p style={{ fontSize: '0.875rem', margin: '0 0 0.25rem 0' }}>
-                        <strong>Action Taken:</strong> {report.resolution.actionTaken}
-                      </p>
-                      <p style={{ fontSize: '0.875rem', color: '#374151', margin: '0 0 0.5rem 0' }}>
-                        {report.resolution.description}
-                      </p>
-                      {report.resolution.resolvedAt && (
-                        <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: '0' }}>
-                          Resolved on: {new Date(report.resolution.resolvedAt).toLocaleDateString()}
-                        </p>
-                      )}
-                      {report.resolution.images && report.resolution.images.length > 0 && (
-                        <div style={{ marginTop: '0.5rem' }}>
-                          <p style={{ fontSize: '0.75rem', fontWeight: '500', marginBottom: '0.25rem' }}>Proof Images:</p>
-                          <ImageGallery images={report.resolution.images} />
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Verification Section - Show student feedback or dispute */}
-                  {report.status === 'verified' && report.verification && (
-                    <div style={{ 
-                      background: '#d1fae5', 
-                      border: '1px solid #6ee7b7',
-                      borderRadius: '0.5rem', 
-                      padding: '0.75rem',
-                      marginBottom: '0.75rem'
-                    }}>
-                      <h4 style={{ fontSize: '0.875rem', fontWeight: '600', color: '#065f46', margin: '0 0 0.5rem 0' }}>
-                        ✅ Student Verified
-                      </h4>
-                      {report.verification.feedback && (
-                        <p style={{ fontSize: '0.875rem', color: '#047857', margin: '0', fontStyle: 'italic' }}>
-                          "{report.verification.feedback}"
-                        </p>
-                      )}
-                      {report.verification.verifiedAt && (
-                        <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: '0.25rem 0 0 0' }}>
-                          Verified on: {new Date(report.verification.verifiedAt).toLocaleDateString()}
-                        </p>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Disputed Section - Show dispute reason and reopen button */}
-                  {report.status === 'disputed' && report.verification && (
-                    <div style={{ 
-                      background: '#fee2e2', 
-                      border: '1px solid #fca5a5',
-                      borderRadius: '0.5rem', 
-                      padding: '0.75rem',
-                      marginBottom: '0.75rem'
-                    }}>
-                      <h4 style={{ fontSize: '0.875rem', fontWeight: '600', color: '#991b1b', margin: '0 0 0.5rem 0' }}>
-                        ⚠️ Student Disputed Resolution
-                      </h4>
-                      {report.verification.disputeReason && (
-                        <p style={{ fontSize: '0.875rem', color: '#b91c1c', margin: '0', fontStyle: 'italic' }}>
-                          "{report.verification.disputeReason}"
-                        </p>
-                      )}
-                      {report.verification.verifiedAt && (
-                        <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: '0.25rem 0 0 0' }}>
-                          Disputed on: {new Date(report.verification.verifiedAt).toLocaleDateString()}
-                        </p>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Action Buttons */}
-                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid #e5e7eb' }}>
-                    {/* Pending: Approve/Reject */}
-                    {report.status === 'pending' && (
-                      <>
-                        <button 
-                          className="btn-approve" 
-                          onClick={() => updateReportStatus(report._id, 'approved')}
-                          style={{
-                            padding: '0.5rem 1rem',
-                            borderRadius: '0.375rem',
-                            border: 'none',
-                            background: '#22c55e',
-                            color: '#fff',
-                            fontWeight: '500',
-                            cursor: 'pointer'
-                          }}
-                        >
-                          ✅ Approve
-                        </button>
-                        <button 
-                          className="btn-reject" 
-                          onClick={() => updateReportStatus(report._id, 'rejected')}
-                          style={{
-                            padding: '0.5rem 1rem',
-                            borderRadius: '0.375rem',
-                            border: 'none',
-                            background: '#ef4444',
-                            color: '#fff',
-                            fontWeight: '500',
-                            cursor: 'pointer'
-                          }}
-                        >
-                          ❌ Reject
-                        </button>
-                      </>
-                    )}
-
-                    {/* Disputed: Reopen for Owner */}
-                    {report.status === 'disputed' && (
-                      <button 
-                        className="btn-reopen" 
-                        onClick={() => handleReopenReport(report._id)}
-                        style={{
-                          padding: '0.5rem 1rem',
-                          borderRadius: '0.375rem',
-                          border: 'none',
-                          background: '#f59e0b',
-                          color: '#fff',
-                          fontWeight: '500',
-                          cursor: 'pointer'
-                        }}
-                      >
-                        🔄 Reopen for Owner
-                      </button>
-                    )}
-
-                    {/* Always show Delete */}
-                    <button 
-                      className="btn-delete" 
-                      onClick={() => deleteReport(report._id)}
-                      style={{
-                        padding: '0.5rem 1rem',
-                        borderRadius: '0.375rem',
-                        border: '1px solid #ef4444',
-                        background: '#fff',
-                        color: '#ef4444',
-                        fontWeight: '500',
-                        cursor: 'pointer',
-                        marginLeft: 'auto'
-                      }}
-                    >
-                      🗑️ Delete
-                    </button>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'users' && (
-        <div className="admin-users">
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Email</th>
-                <th>Status</th>
-                <th>Joined</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {users.map((user) => (
-                <tr key={user._id} className={user.isBanned ? 'banned-row' : ''}>
-                  <td>{user.name}</td>
-                  <td>{user.email}</td>
-                  <td>
-                    <span className={`status-badge ${user.isBanned ? 'status-banned' : 'status-active'}`}>
-                      {user.isBanned ? 'Banned' : 'Active'}
-                    </span>
-                  </td>
-                  <td>{new Date(user.createdAt).toLocaleDateString()}</td>
-                  <td>
-                    <button
-                      className={user.isBanned ? 'btn-unban' : 'btn-ban'}
-                      onClick={() => toggleBanUser(user._id, user.isBanned)}
-                    >
-                      {user.isBanned ? 'Unban' : 'Ban'}
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {activeTab === 'counterReports' && (
-        <div className="admin-counter-reports">
-          <h2>Review Counter Reports</h2>
-          {adminCounterReports.length === 0 ? (
-            <div className="empty-state">
-              <p>No counter reports to review.</p>
+              {/* Filters */}
+              <div className="flex bg-slate-100 p-1 rounded-xl w-full sm:w-auto">
+                {['all', 'pending', 'approved', 'disputed'].map(f => (
+                  <button
+                    key={f}
+                    onClick={() => setFilter(f)}
+                    className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
+                      filter === f ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                    }`}
+                  >
+                    {f}
+                  </button>
+                ))}
+              </div>
             </div>
-          ) : (
-            <table className="admin-table">
+          </div>
+
+          {/* Table */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
               <thead>
-                <tr>
-                  <th>Accommodation</th>
-                  <th>Owner</th>
-                  <th>Reason</th>
-                  <th>Original Report</th>
-                  <th>Status</th>
-                  <th>Date</th>
-                  <th>Actions</th>
+                <tr className="bg-slate-50/50">
+                  <th className="px-8 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Reporter</th>
+                  <th className="px-8 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Accommodation</th>
+                  <th className="px-8 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Category</th>
+                  <th className="px-8 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Status</th>
+                  <th className="px-8 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Date</th>
+                  <th className="px-8 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody>
-                {adminCounterReports.map((counter) => (
-                  <tr key={counter._id}>
-                    <td>{counter.accommodation?.name || 'N/A'}</td>
-                    <td>{counter.owner?.name}<br/><small>{counter.owner?.email}</small></td>
-                    <td>{counter.reason.replace(/_/g, ' ')}</td>
-                    <td>
-                      <div className="original-report-preview">
-                        <strong>{counter.originalReport?.issueType}</strong>
-                        <p>{counter.originalReport?.description?.substring(0, 50)}...</p>
+              <tbody className="divide-y divide-slate-50">
+                {filteredReports.map(report => (
+                  <tr key={report._id} className="hover:bg-slate-50/30 transition-colors group">
+                    <td className="px-8 py-6">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500 font-black text-xs">
+                          {report.userId?.name.charAt(0)}
+                        </div>
+                        <span className="font-bold text-slate-900 text-sm">{report.userId?.name}</span>
                       </div>
                     </td>
-                    <td>
-                      <span className={`status-badge status-${counter.status}`}>
-                        {counter.status}
+                    <td className="px-8 py-6">
+                      <span className="font-bold text-slate-700 text-sm">{report.accommodationId?.name}</span>
+                    </td>
+                    <td className="px-8 py-6">
+                      <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-[10px] font-black uppercase tracking-widest">
+                        {report.category}
                       </span>
                     </td>
-                    <td>{new Date(counter.createdAt).toLocaleDateString()}</td>
-                    <td className="action-buttons">
-                      {counter.status === 'pending' && (
-                        <>
-                          <button
-                            className="btn-approve"
-                            onClick={() => handleReviewCounter(counter._id, 'accepted')}
-                          >
-                            Accept
-                          </button>
-                          <button
-                            className="btn-reject"
-                            onClick={() => handleReviewCounter(counter._id, 'rejected')}
-                          >
-                            Reject
-                          </button>
-                        </>
-                      )}
-                      {counter.status !== 'pending' && (
-                        <span className="status-text">Reviewed</span>
-                      )}
+                    <td className="px-8 py-6">
+                      <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
+                        report.status === 'pending' ? 'bg-yellow-50 text-yellow-600' :
+                        report.status === 'approved' ? 'bg-blue-50 text-blue-600' :
+                        report.status === 'resolved' ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'
+                      }`}>
+                        {report.status}
+                      </span>
+                    </td>
+                    <td className="px-8 py-6">
+                      <span className="text-slate-400 font-bold text-xs">{new Date(report.createdAt).toLocaleDateString()}</span>
+                    </td>
+                    <td className="px-8 py-6 text-right">
+                      <div className="flex justify-end gap-2">
+                        <button 
+                          onClick={() => updateReportStatus(report._id, 'approved')}
+                          className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all"
+                          title="Approve"
+                        >
+                          <FiCheckCircle />
+                        </button>
+                        <button 
+                          onClick={() => updateReportStatus(report._id, 'disputed')}
+                          className="p-2 text-slate-400 hover:text-yellow-600 hover:bg-yellow-50 rounded-lg transition-all"
+                          title="Flag / Dispute"
+                        >
+                          <FiAlertTriangle />
+                        </button>
+                        <button className="p-2 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-all">
+                          <FiEye />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+          </div>
+          
+          {filteredReports.length === 0 && (
+            <div className="p-20 text-center">
+              <div className="w-20 h-20 bg-slate-50 rounded-3xl flex items-center justify-center mx-auto mb-6">
+                <FiCheckCircle className="text-slate-200 text-3xl" />
+              </div>
+              <p className="text-slate-400 font-bold">No reports found matching your criteria.</p>
+            </div>
           )}
+
+          <div className="p-8 bg-slate-50 border-t border-slate-100 flex justify-between items-center">
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">Showing {filteredReports.length} of {reports.length} reports</p>
+            <div className="flex gap-2">
+              <button className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-600 disabled:opacity-50">Previous</button>
+              <button className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-600">Next</button>
+            </div>
+          </div>
         </div>
-      )}
+
+        {/* Audit Log / Activity */}
+        <div className="mt-12 grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="lg:col-span-2 bg-white rounded-3xl p-8 border border-slate-100 shadow-xl shadow-slate-200/50">
+            <h3 className="text-lg font-black text-slate-900 mb-6 flex items-center gap-2">
+              <FiTrendingUp className="text-emerald-600" /> Platform Growth
+            </h3>
+            <div className="h-64 bg-slate-50 rounded-2xl flex items-center justify-center border border-slate-100">
+              <p className="text-slate-400 font-bold text-sm italic">Analytics Visualization (Chart.js placeholder)</p>
+            </div>
+          </div>
+          
+          <div className="bg-white rounded-3xl p-8 border border-slate-100 shadow-xl shadow-slate-200/50">
+            <h3 className="text-lg font-black text-slate-900 mb-6">System Health</h3>
+            <div className="space-y-6">
+              {[
+                { label: 'API Server', status: 'Operational', color: 'text-emerald-500' },
+                { label: 'Database', status: 'Operational', color: 'text-emerald-500' },
+                { label: 'Storage', status: '92% Free', color: 'text-blue-500' },
+                { label: 'Email Service', status: 'Operational', color: 'text-emerald-500' }
+              ].map((item, i) => (
+                <div key={i} className="flex justify-between items-center">
+                  <span className="text-sm font-bold text-slate-500">{item.label}</span>
+                  <span className={`text-[10px] font-black uppercase tracking-widest ${item.color}`}>{item.status}</span>
+                </div>
+              ))}
+            </div>
+            <button className="w-full mt-8 py-3 bg-slate-900 text-white rounded-xl font-bold text-xs hover:bg-slate-800 transition-all">
+              View Audit Logs
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

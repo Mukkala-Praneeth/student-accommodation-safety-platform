@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Home } from './pages/Home';
 import { Dashboard } from './pages/Dashboard';
 import { AccommodationList } from './pages/AccommodationList';
@@ -17,12 +17,12 @@ import AdminDashboard from './pages/AdminDashboard';
 import OwnerRegister from './pages/OwnerRegister';
 import OwnerLogin from './pages/OwnerLogin';
 import OwnerDashboard from './pages/OwnerDashboard';
+import AddProperty from './pages/AddProperty';
 import Profile from './pages/Profile';
 import VerifyEmail from './pages/VerifyEmail';
 import ForgotPassword from './pages/ForgotPassword';
 
-
-// Mock data for demonstration
+// Interfaces
 export interface User {
   id: string;
   name: string;
@@ -66,135 +66,100 @@ const mockAccommodations: Accommodation[] = [
     address: '123 University St, City',
     safetyClassification: 'Safe',
     riskScore: 15,
-    reports: [
-      {
-        id: 'r1',
-        userId: 'u1',
-        userName: 'John Doe',
-        accommodationId: '1',
-        category: 'Hygiene',
-        description: 'Clean rooms and common areas maintained regularly.',
-        timestamp: '2024-01-15T10:30:00Z',
-        status: 'active'
-      }
-    ]
-  },
-  {
-    id: '2',
-    name: 'Campus PG House',
-    location: 'North Campus',
-    address: '456 College Ave, City',
-    safetyClassification: 'Risky',
-    riskScore: 65,
-    reports: [
-      {
-        id: 'r2',
-        userId: 'u2',
-        userName: 'Jane Smith',
-        accommodationId: '2',
-        category: 'Security',
-        description: 'Poor lighting in corridors and broken security cameras.',
-        timestamp: '2024-01-20T14:20:00Z',
-        status: 'active'
-      },
-      {
-        id: 'r3',
-        userId: 'u3',
-        userName: 'Mike Johnson',
-        accommodationId: '2',
-        category: 'Water',
-        description: 'Water supply contaminated, causing health issues.',
-        timestamp: '2024-01-18T09:15:00Z',
-        status: 'under_review'
-      }
-    ]
-  },
-  {
-    id: '3',
-    name: 'Student Haven Apartments',
-    location: 'South Campus',
-    address: '789 Dormitory Rd, City',
-    safetyClassification: 'High Risk',
-    riskScore: 85,
-    reports: [
-      {
-        id: 'r4',
-        userId: 'u4',
-        userName: 'Sarah Wilson',
-        accommodationId: '3',
-        category: 'Infrastructure',
-        description: 'Building has structural cracks and electrical hazards.',
-        timestamp: '2024-01-10T16:45:00Z',
-        status: 'active'
-      },
-      {
-        id: 'r5',
-        userId: 'u5',
-        userName: 'David Brown',
-        accommodationId: '3',
-        category: 'Food',
-        description: 'Mess food quality extremely poor, multiple food poisoning cases.',
-        timestamp: '2024-01-12T12:30:00Z',
-        status: 'active'
-      }
-    ]
+    reports: []
   }
 ];
 
+// Protected Route Component
 const ProtectedRoute: React.FC<{ children: React.ReactNode; requiredRole?: string }> = ({ 
   children, 
   requiredRole 
 }) => {
   const { user, loading } = useAuth();
+  const location = useLocation();
   
+  // Show loading while checking auth
   if (loading) {
-    return <div className="flex items-center justify-center min-h-screen">Loading...</div>;
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-50">
+        <div className="flex flex-col items-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+          <p className="text-gray-600 font-medium">Verifying access...</p>
+        </div>
+      </div>
+    );
   }
   
+  // Double-check localStorage if user is null (fallback)
   if (!user) {
-    return <Navigate to="/login" />;
+    const storedUser = localStorage.getItem('user');
+    const storedToken = localStorage.getItem('token');
+    
+    if (storedUser && storedToken) {
+      // User exists in localStorage but not in state - this is a timing issue
+      // Force a reload to sync state
+      console.log('Auth state mismatch - reloading...');
+      window.location.reload();
+      return null;
+    }
+    
+    // No user, redirect to appropriate login
+    if (location.pathname.startsWith('/owner')) {
+      return <Navigate to="/owner/login" state={{ from: location }} replace />;
+    }
+    if (location.pathname.startsWith('/admin')) {
+      return <Navigate to="/login" state={{ from: location }} replace />;
+    }
+    return <Navigate to="/login" state={{ from: location }} replace />;
   }
   
+  // User exists but wrong role
   if (requiredRole && user.role !== requiredRole) {
-    return <Navigate to="/" />;
+    console.log('Wrong role:', { userRole: user.role, requiredRole });
+    switch (user.role) {
+      case 'owner':
+        return <Navigate to="/owner/dashboard" replace />;
+      case 'admin':
+        return <Navigate to="/admin" replace />;
+      case 'student':
+      default:
+        return <Navigate to="/dashboard" replace />;
+    }
   }
   
+  // All checks passed
   return <>{children}</>;
 };
 
-export function App() {
+// Main App Content
+function AppContent() {
   const API = import.meta.env.VITE_API_URL || 'http://localhost:5000';
   const [backendStatus, setBackendStatus] = useState<string>('Connecting...');
+  const location = useLocation();
+
+  // ✅ Check if current page is home
+  const isHomePage = location.pathname === '/';
 
   useEffect(() => {
     const checkBackend = async () => {
       setBackendStatus('Connecting to server...');
       
-      const maxRetries = 3;
-      let attempt = 0;
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
 
-      while (attempt < maxRetries) {
-        try {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 30000);
+        const response = await fetch(`${API}/api/test`, {
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
 
-          const response = await fetch(`${API}/api/test`, {
-            signal: controller.signal
-          });
-          clearTimeout(timeoutId);
-
-          const data = await response.json();
-          setBackendStatus(data.message || 'Connected');
-          return;
-        } catch (error) {
-          attempt++;
-          if (attempt < maxRetries) {
-            setBackendStatus(`Server is waking up... Attempt ${attempt + 1}/${maxRetries}`);
-            await new Promise(resolve => setTimeout(resolve, 5000));
-          } else {
-            setBackendStatus('Server is starting up. Please refresh in 30 seconds.');
-          }
-        }
+        const data = await response.json();
+        setBackendStatus(data.message || 'Connected');
+      } catch (error) {
+        setBackendStatus('Reconnecting...');
+        setTimeout(() => {
+          setBackendStatus('Checking...');
+        }, 5000);
       }
     };
 
@@ -202,87 +167,115 @@ export function App() {
   }, [API]);
 
   return (
+    <div className="min-h-screen flex flex-col">
+      <Header />
+      <main className="flex-grow">
+        <Routes>
+          {/* ==================== PUBLIC ROUTES ==================== */}
+          <Route path="/" element={<Home />} />
+          <Route path="/accommodations" element={<AccommodationList />} />
+          <Route path="/accommodations/:id" element={<AccommodationDetail />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          <Route path="/verify-email" element={<VerifyEmail />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/owner/register" element={<OwnerRegister />} />
+          <Route path="/owner/login" element={<OwnerLogin />} />
+          
+          {/* ==================== STUDENT PROTECTED ROUTES ==================== */}
+          <Route 
+            path="/dashboard" 
+            element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/report" 
+            element={
+              <ProtectedRoute>
+                <ReportIncident />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/my-reports" 
+            element={
+              <ProtectedRoute>
+                <MyReports />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/profile" 
+            element={
+              <ProtectedRoute>
+                <Profile />
+              </ProtectedRoute>
+            } 
+          />
+          
+          {/* ==================== OWNER PROTECTED ROUTES ==================== */}
+          <Route 
+            path="/owner/dashboard" 
+            element={
+              <ProtectedRoute requiredRole="owner">
+                <OwnerDashboard />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/owner/add-property" 
+            element={
+              <ProtectedRoute requiredRole="owner">
+                <AddProperty />
+              </ProtectedRoute>
+            } 
+          />
+          
+          {/* ==================== ADMIN PROTECTED ROUTES ==================== */}
+          <Route
+            path="/admin"
+            element={
+              <ProtectedRoute requiredRole="admin">
+                <AdminDashboard />
+              </ProtectedRoute>
+            }
+          />
+          
+          {/* ==================== CATCH ALL ==================== */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </main>
+      
+      {/* ✅ Footer only on Home Page */}
+      {isHomePage && <Footer />}
+      
+      {/* Backend Status Indicator */}
+      <div style={{ 
+        position: "fixed", 
+        bottom: 10, 
+        right: 10, 
+        fontSize: 12, 
+        backgroundColor: backendStatus === 'Connected' ? 'rgba(34, 197, 94, 0.9)' : 'rgba(0,0,0,0.7)', 
+        color: 'white', 
+        padding: '4px 8px', 
+        borderRadius: '4px',
+        zIndex: 9999
+      }}>
+        Backend: {backendStatus}
+      </div>
+    </div>
+  );
+}
+
+export function App() {
+  return (
     <AuthProvider>
       <AccommodationProvider initialAccommodations={mockAccommodations}>
         <Router>
-          <div className="min-h-screen flex flex-col">
-            <Header />
-            <main className="flex-grow">
-              <Routes>
-                <Route path="/" element={<Home />} />
-                <Route 
-                  path="/dashboard" 
-                  element={
-                    <ProtectedRoute>
-                      <Dashboard />
-                    </ProtectedRoute>
-                  } 
-                />
-                <Route 
-                  path="/accommodations" 
-                  element={<AccommodationList />} 
-                />
-                <Route 
-                  path="/accommodations/:id" 
-                  element={<AccommodationDetail />} 
-                />
-                <Route 
-                  path="/report" 
-                  element={
-                    <ProtectedRoute>
-                      <ReportIncident />
-                    </ProtectedRoute>
-                  } 
-                />
-                <Route 
-                  path="/my-reports" 
-                  element={
-                    <ProtectedRoute>
-                      <MyReports />
-                    </ProtectedRoute>
-                  } 
-                />
-                <Route
-                  path="/admin"
-                  element={
-                    <ProtectedRoute requiredRole="admin">
-                      <AdminDashboard />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route path="/login" element={<Login />} />
-                <Route path="/register" element={<Register />} />
-                <Route path="/verify-email" element={<VerifyEmail />} />
-                <Route path="/forgot-password" element={<ForgotPassword />} />
-                <Route path="/owner/register" element={<OwnerRegister />} />
-                <Route path="/owner/login" element={<OwnerLogin />} />
-                <Route path="/profile" element={<Profile />} />
-                <Route 
-                  path="/owner/dashboard" 
-                  element={
-                    <ProtectedRoute requiredRole="owner">
-                      <OwnerDashboard />
-                    </ProtectedRoute>
-                  } 
-                />
-                <Route path="*" element={<Navigate to="/" />} />
-              </Routes>
-            </main>
-            <Footer />
-            <div style={{ 
-              position: "fixed", 
-              bottom: 10, 
-              right: 10, 
-              fontSize: 12, 
-              backgroundColor: 'rgba(0,0,0,0.7)', 
-              color: 'white', 
-              padding: '4px 8px', 
-              borderRadius: '4px',
-              zIndex: 9999
-            }}>
-              Backend Status: {backendStatus}
-            </div>
-          </div>
+          <AppContent />
         </Router>
       </AccommodationProvider>
     </AuthProvider>

@@ -1,349 +1,284 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { ImageGallery } from '../components/ImageGallery';
-import { ImageUpload } from '../components/ImageUpload';
-import LocationPicker from '../components/LocationPicker';
+import { 
+  FiHome, FiMessageSquare, FiTrendingUp, FiAlertCircle, FiCheckCircle, 
+  FiArrowRight, FiPlus, FiClock, FiStar, FiShield, FiX, FiUpload,
+  FiImage, FiSend, FiCheck
+} from 'react-icons/fi';
 
-interface Stats {
-  totalAccommodations: number;
-  totalRooms: number;
-  occupiedRooms: number;
-  occupancyRate: number;
-  totalReports: number;
-  pendingCounters: number;
-}
-
-interface Accommodation {
+interface Property {
   _id: string;
   name: string;
   address: string;
   city: string;
-  description: string;
-  amenities: string[];
-  totalRooms: number;
-  occupiedRooms: number;
-  pricePerMonth: number;
-  contactPhone: string;
-  isVerified: boolean;
-  riskScore: number;
-  createdAt: string;
+  safetyScore: number;
+  totalReports: number;
+  trustScore?: number;
 }
 
-interface Resolution {
-  description: string;
-  actionTaken: string;
-  images: Array<{ url: string; publicId: string }>;
-  resolvedBy?: { name: string } | string;
-  resolvedAt?: string;
-}
-
-interface Verification {
-  isVerified: boolean;
-  verifiedBy?: string;
-  verifiedAt?: string;
-  feedback?: string;
-  isDisputed: boolean;
-  disputeReason?: string;
-}
-
-interface Report {
+interface Feedback {
   _id: string;
-  accommodationName: string;
-  issueType: string;
+  category: string;
   description: string;
-  images?: Array<{ url: string; publicId?: string }>;
-  status: string;
-  isCountered: boolean;
-  counterStatus: string;
-  createdAt: string;
-  user: { name: string; email: string } | null;
-  resolution?: Resolution;
-  verification?: Verification;
-}
-
-interface CounterReport {
-  _id: string;
-  reason: string;
-  explanation: string;
   status: string;
   createdAt: string;
-  originalReport: Report;
-  accommodation: { name: string };
+  images?: string[];
+  accommodationId: {
+    _id: string;
+    name: string;
+  };
 }
 
 export default function OwnerDashboard() {
-  const API = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-  const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<'overview' | 'accommodations' | 'reports' | 'counters'>('overview');
-  const [stats, setStats] = useState<Stats | null>(null);
-  const [accommodations, setAccommodations] = useState<Accommodation[]>([]);
-  const [reports, setReports] = useState<Report[]>([]);
-  const [counterReports, setCounterReports] = useState<CounterReport[]>([]);
+  const { user, loading: authLoading } = useAuth();
+  const [properties, setProperties] = useState<Property[]>([]);
+  const [feedbacks, setFeedbacks] = useState<Feedback[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [showCounterModal, setShowCounterModal] = useState(false);
-  const [showResolveModal, setShowResolveModal] = useState(false);
-  const [selectedReport, setSelectedReport] = useState<Report | null>(null);
-
-  const [newAccommodation, setNewAccommodation] = useState({
-    name: '',
-    address: '',
-    city: '',
-    description: '',
-    amenities: '',
-    totalRooms: 0,
-    pricePerMonth: 0,
-    contactPhone: ''
-  });
-
-  const [newLatitude, setNewLatitude] = useState<number | null>(null);
-  const [newLongitude, setNewLongitude] = useState<number | null>(null);
-
-  const [counterForm, setCounterForm] = useState({
-    reason: 'false_information',
-    explanation: '',
-    evidenceDescription: ''
-  });
-
-  const [resolutionForm, setResolutionForm] = useState({
-    description: '',
-    actionTaken: '',
-  });
-  const [resolutionImages, setResolutionImages] = useState<Array<{ url: string; publicId: string }>>([]);
-  const [isResolving, setIsResolving] = useState(false);
-
-  const { user, loading: authLoading } = useAuth();
-  const token = localStorage.getItem('token');
+  // Response Modal State
+  const [showResponseModal, setShowResponseModal] = useState(false);
+  const [selectedFeedback, setSelectedFeedback] = useState<Feedback | null>(null);
+  const [responseText, setResponseText] = useState('');
+  const [responseImages, setResponseImages] = useState<File[]>([]);
+  const [responseImagePreviews, setResponseImagePreviews] = useState<string[]>([]);
+  const [submittingResponse, setSubmittingResponse] = useState(false);
+  const [responseSuccess, setResponseSuccess] = useState(false);
+  
+  const navigate = useNavigate();
+  const API = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
   useEffect(() => {
-    if (!authLoading && user && user.role === 'owner') {
-      fetchAll();
+    if (authLoading) return;
+    
+    if (!user) {
+      navigate('/owner/login');
+      return;
     }
-  }, [authLoading, user, API]);
-
-  const fetchAll = () => {
-    fetchStats();
-    fetchAccommodations();
-    fetchReports();
-    fetchCounterReports();
-  };
-
-  const fetchStats = async () => {
-    try {
-      const res = await fetch(`${API}/api/owner/stats`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (data.success) {
-        setStats(data.data);
+    
+    if (user.role !== 'owner') {
+      if (user.role === 'admin') {
+        navigate('/admin');
       } else {
-        setError(data.message || 'Failed to fetch dashboard stats');
+        navigate('/dashboard');
+      }
+      return;
+    }
+    
+    fetchDashboardData();
+  }, [user, authLoading, navigate]);
+
+  const fetchDashboardData = async () => {
+    const token = localStorage.getItem('token');
+    
+    if (!token) {
+      navigate('/owner/login');
+      return;
+    }
+    
+    setLoading(true);
+    setError('');
+    
+    try {
+      const [propsRes, feedbackRes] = await Promise.all([
+        fetch(`${API}/api/owner/accommodations`, { 
+          headers: { 'Authorization': `Bearer ${token}` } 
+        }),
+        fetch(`${API}/api/owner/reports`, { 
+          headers: { 'Authorization': `Bearer ${token}` } 
+        })
+      ]);
+      
+      const propsData = await propsRes.json();
+      const feedbackData = await feedbackRes.json();
+      
+      if (propsData.success) {
+        setProperties(propsData.data || []);
+      }
+      if (feedbackData.success) {
+        setFeedbacks(feedbackData.data || []);
       }
     } catch (err) {
-      setError('Error connecting to server');
-      console.error('Error fetching stats');
+      console.error('Error fetching dashboard data:', err);
+      setError('Failed to load dashboard data');
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchAccommodations = async () => {
-    try {
-      const res = await fetch(`${API}/api/owner/accommodations`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (data.success) setAccommodations(data.data);
-    } catch (err) {
-      console.error('Error fetching accommodations');
-    }
+  // Open response modal
+  const openResponseModal = (feedback: Feedback) => {
+    setSelectedFeedback(feedback);
+    setResponseText('');
+    setResponseImages([]);
+    setResponseImagePreviews([]);
+    setResponseSuccess(false);
+    setShowResponseModal(true);
   };
 
-  const fetchReports = async () => {
-    try {
-      const res = await fetch(`${API}/api/owner/reports`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (data.success) setReports(data.data);
-    } catch (err) {
-      console.error('Error fetching reports');
-    }
+  // Close response modal
+  const closeResponseModal = () => {
+    setShowResponseModal(false);
+    setSelectedFeedback(null);
+    setResponseText('');
+    setResponseImages([]);
+    setResponseImagePreviews([]);
+    setResponseSuccess(false);
   };
 
-  const fetchCounterReports = async () => {
-    try {
-      const res = await fetch(`${API}/api/owner/counter-reports`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (data.success) setCounterReports(data.data);
-    } catch (err) {
-      console.error('Error fetching counter reports');
+  // Handle image selection
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length + responseImages.length > 5) {
+      alert('Maximum 5 images allowed');
+      return;
     }
+
+    const validFiles = files.filter(file => {
+      if (!file.type.startsWith('image/')) {
+        alert(`${file.name} is not an image`);
+        return false;
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        alert(`${file.name} is too large (max 5MB)`);
+        return false;
+      }
+      return true;
+    });
+
+    setResponseImages(prev => [...prev, ...validFiles]);
+
+    // Create previews
+    validFiles.forEach(file => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setResponseImagePreviews(prev => [...prev, reader.result as string]);
+      };
+      reader.readAsDataURL(file);
+    });
   };
 
-  const handleAddAccommodation = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Remove image
+  const removeImage = (index: number) => {
+    setResponseImages(prev => prev.filter((_, i) => i !== index));
+    setResponseImagePreviews(prev => prev.filter((_, i) => i !== index));
+  };
+
+  // Submit response
+  const submitResponse = async () => {
+    if (!selectedFeedback || !responseText.trim()) {
+      alert('Please enter a response');
+      return;
+    }
+
+    setSubmittingResponse(true);
+
     try {
-      const res = await fetch(`${API}/api/owner/accommodations`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          ...newAccommodation,
-          amenities: newAccommodation.amenities.split(',').map(a => a.trim()).filter(a => a),
-          latitude: newLatitude,
-          longitude: newLongitude
-        })
-      });
-      const data = await res.json();
-      if (data.success) {
-        alert('Accommodation added successfully!');
-        setShowAddModal(false);
-        setNewAccommodation({
-          name: '', address: '', city: '', description: '',
-          amenities: '', totalRooms: 0, pricePerMonth: 0, contactPhone: ''
+      const token = localStorage.getItem('token');
+      let imageUrls: string[] = [];
+
+      // Upload images first if any
+      if (responseImages.length > 0) {
+        const formData = new FormData();
+        responseImages.forEach(file => {
+          formData.append('images', file);
         });
-        setNewLatitude(null);
-        setNewLongitude(null);
-        fetchAll();
-      } else {
-        alert(data.message);
-      }
-    } catch (err) {
-      alert('Error adding accommodation');
-    }
-  };
 
-  const handleUpdateOccupancy = async (accId: string, occupiedRooms: number) => {
-    try {
-      const res = await fetch(`${API}/api/owner/accommodations/${accId}/occupancy`, {
+        const uploadRes = await fetch(`${API}/api/upload`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          },
+          body: formData
+        });
+
+        const uploadData = await uploadRes.json();
+        if (uploadData.success && uploadData.urls) {
+          imageUrls = uploadData.urls;
+        }
+      }
+
+      // Submit resolution
+      const response = await fetch(`${API}/api/owner/reports/${selectedFeedback._id}/resolve`, {
         method: 'PUT',
         headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ occupiedRooms })
-      });
-      const data = await res.json();
-      if (data.success) {
-        fetchAll();
-      } else {
-        alert(data.message);
-      }
-    } catch (err) {
-      alert('Error updating occupancy');
-    }
-  };
-
-  const handleDeleteAccommodation = async (accId: string) => {
-    if (!window.confirm('Are you sure you want to delete this accommodation?')) return;
-    try {
-      const res = await fetch(`${API}/api/owner/accommodations/${accId}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (data.success) {
-        alert('Accommodation deleted');
-        fetchAll();
-      } else {
-        alert(data.message);
-      }
-    } catch (err) {
-      alert('Error deleting accommodation');
-    }
-  };
-
-  const handleSubmitCounter = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedReport) return;
-
-    try {
-      const res = await fetch(`${API}/api/owner/counter-report`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
-          reportId: selectedReport._id,
-          ...counterForm
+          resolutionDescription: responseText.trim(),
+          resolutionImages: imageUrls,
+          actionTaken: responseText.trim()
         })
       });
-      const data = await res.json();
-      if (data.success) {
-        alert('Counter report submitted successfully!');
-        setShowCounterModal(false);
-        setSelectedReport(null);
-        setCounterForm({ reason: 'false_information', explanation: '', evidenceDescription: '' });
-        fetchAll();
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        setResponseSuccess(true);
+        // Refresh data after 2 seconds
+        setTimeout(() => {
+          closeResponseModal();
+          fetchDashboardData();
+        }, 2000);
       } else {
-        alert(data.message);
+        alert(data.message || 'Failed to submit response');
       }
     } catch (err) {
-      alert('Error submitting counter report');
-    }
-  };
-
-  const handleResolveReport = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedReport) return;
-
-    setIsResolving(true);
-    try {
-      const res = await fetch(`${API}/api/owner/reports/${selectedReport._id}/resolve`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          ...resolutionForm,
-          images: resolutionImages
-        })
-      });
-      const data = await res.json();
-      if (data.success) {
-        alert('Report marked as resolved!');
-        setShowResolveModal(false);
-        setSelectedReport(null);
-        setResolutionForm({ description: '', actionTaken: '' });
-        setResolutionImages([]);
-        fetchAll();
-      } else {
-        alert(data.message);
-      }
-    } catch (err) {
-      alert('Error resolving report');
+      console.error('Submit response error:', err);
+      alert('Error submitting response. Please try again.');
     } finally {
-      setIsResolving(false);
+      setSubmittingResponse(false);
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    navigate('/owner/login');
-  };
+  // Loading states
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="flex flex-col items-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mb-4"></div>
+          <p className="text-gray-600 font-medium">Verifying access...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user || user.role !== 'owner') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="flex flex-col items-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mb-4"></div>
+          <p className="text-gray-600 font-medium">Redirecting...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
-    return <div className="owner-loading">Loading dashboard...</div>;
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="flex flex-col items-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mb-4"></div>
+          <p className="text-gray-600 font-medium">Loading your properties...</p>
+        </div>
+      </div>
+    );
   }
 
   if (error) {
     return (
-      <div className="owner-dashboard">
-        <div className="error-state text-center py-20">
-          <p className="text-red-600 text-lg mb-4">{error}</p>
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
+        <div className="max-w-md w-full bg-white p-8 rounded-2xl shadow-xl text-center">
+          <div className="bg-red-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+            <FiAlertCircle className="h-8 w-8 text-red-600" />
+          </div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">{error}</h2>
+          <p className="text-gray-600 mb-6">Please check your connection and try again.</p>
           <button 
-            onClick={() => { setError(""); setLoading(true); fetchAll(); }}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+            onClick={fetchDashboardData}
+            className="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition-colors"
           >
             Try Again
           </button>
@@ -352,454 +287,392 @@ export default function OwnerDashboard() {
     );
   }
 
+  const pendingReports = feedbacks.filter(f => f.status === 'pending' || f.status === 'approved' || f.status === 'disputed').length;
+  const avgScore = properties.length > 0 
+    ? Math.round(properties.reduce((acc, p) => acc + (p.trustScore || p.safetyScore || 0), 0) / properties.length)
+    : 0;
+
   return (
-    <div className="owner-dashboard">
-      <div className="owner-header">
-        <div>
-          <h1>Owner Dashboard</h1>
-          <p>Manage your accommodations and respond to reports</p>
-        </div>
-      </div>
+    <div className="min-h-screen bg-slate-50 pb-20">
+      {/* Header */}
+      <div className="bg-slate-900 text-white pt-10 pb-32">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+            <div>
+              <h1 className="text-3xl font-black tracking-tight mb-2">Property Management Dashboard</h1>
+              <p className="text-emerald-400 font-bold flex items-center gap-2">
+                <FiShield /> Welcome back, {user.name?.split(' ')[0] || 'Owner'}!
+              </p>
+            </div>
+            <Link 
+              to="/owner/add-property" 
+              className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-emerald-900/20 transition-all flex items-center gap-2"
+            >
+              <FiPlus /> Add New Property
+            </Link>
+          </div>
 
-      <div className="owner-tabs">
-        <button className={`owner-tab ${activeTab === 'overview' ? 'active' : ''}`} onClick={() => setActiveTab('overview')}>
-          Overview
-        </button>
-        <button className={`owner-tab ${activeTab === 'accommodations' ? 'active' : ''}`} onClick={() => setActiveTab('accommodations')}>
-          My Accommodations ({(accommodations || []).length})
-        </button>
-        <button className={`owner-tab ${activeTab === 'reports' ? 'active' : ''}`} onClick={() => setActiveTab('reports')}>
-          Reports ({(reports || []).length})
-        </button>
-        <button className={`owner-tab ${activeTab === 'counters' ? 'active' : ''}`} onClick={() => setActiveTab('counters')}>
-          Counter Reports ({(counterReports || []).length})
-        </button>
-      </div>
+          {/* Top Stats */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-12">
+            <div className="bg-white/5 backdrop-blur-md border border-white/10 p-6 rounded-3xl">
+              <div className="flex justify-between items-start mb-4">
+                <div className="p-3 bg-emerald-500/20 rounded-2xl text-emerald-400">
+                  <FiHome className="h-6 w-6" />
+                </div>
+                <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Inventory</span>
+              </div>
+              <p className="text-3xl font-black text-white">{properties.length}</p>
+              <p className="text-sm text-slate-400 font-bold mt-1">Total Properties Registered</p>
+            </div>
+            
+            <div className={`backdrop-blur-md border p-6 rounded-3xl transition-all ${pendingReports > 0 ? 'bg-red-500/10 border-red-500/20' : 'bg-white/5 border-white/10'}`}>
+              <div className="flex justify-between items-start mb-4">
+                <div className={`p-3 rounded-2xl ${pendingReports > 0 ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                  <FiAlertCircle className="h-6 w-6" />
+                </div>
+                <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Attention</span>
+              </div>
+              <p className="text-3xl font-black text-white">{pendingReports}</p>
+              <p className={`text-sm font-bold mt-1 ${pendingReports > 0 ? 'text-red-400' : 'text-slate-400'}`}>
+                {pendingReports > 0 ? `🔔 ${pendingReports} reports need your attention` : 'All reports resolved'}
+              </p>
+            </div>
 
-      {/* Overview Tab */}
-      {activeTab === 'overview' && stats && (
-        <div className="owner-overview">
-          <div className="owner-stats-grid">
-            <div className="owner-stat-card">
-              <h3>{stats.totalAccommodations}</h3>
-              <p>Accommodations</p>
-            </div>
-            <div className="owner-stat-card">
-              <h3>{stats.totalRooms}</h3>
-              <p>Total Rooms</p>
-            </div>
-            <div className="owner-stat-card">
-              <h3>{stats.occupiedRooms}</h3>
-              <p>Occupied Rooms</p>
-            </div>
-            <div className="owner-stat-card highlight">
-              <h3>{stats.occupancyRate}%</h3>
-              <p>Occupancy Rate</p>
-            </div>
-            <div className="owner-stat-card warning">
-              <h3>{stats.totalReports}</h3>
-              <p>Total Reports</p>
-            </div>
-            <div className="owner-stat-card">
-              <h3>{stats.pendingCounters}</h3>
-              <p>Pending Counters</p>
+            <div className="bg-white/5 backdrop-blur-md border border-white/10 p-6 rounded-3xl">
+              <div className="flex justify-between items-start mb-4">
+                <div className="p-3 bg-yellow-500/20 rounded-2xl text-yellow-400">
+                  <FiStar className="h-6 w-6" />
+                </div>
+                <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Performance</span>
+              </div>
+              <p className="text-3xl font-black text-white">{avgScore || 'N/A'}</p>
+              <p className="text-sm text-slate-400 font-bold mt-1">Your overall trust score</p>
             </div>
           </div>
         </div>
-      )}
+      </div>
 
-      {/* Accommodations Tab */}
-      {activeTab === 'accommodations' && (
-        <div className="owner-accommodations">
-          <div className="section-header">
-            <h2>My Accommodations</h2>
-            <button onClick={() => setShowAddModal(true)} className="btn-add">+ Add Accommodation</button>
-          </div>
-
-          { (accommodations || []).length === 0 ? (
-            <div className="empty-state">
-              <p>No accommodations added yet.</p>
-              <button onClick={() => setShowAddModal(true)} className="btn-add">Add Your First Accommodation</button>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-16">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          
+          {/* Main Content: Properties */}
+          <div className="lg:col-span-2 space-y-8">
+            <div className="flex justify-between items-center">
+              <h2 className="text-xl font-black text-slate-900">Your Properties</h2>
+              <Link to="/owner/add-property" className="text-sm font-bold text-emerald-600 hover:text-emerald-700">
+                + Add New
+              </Link>
             </div>
-          ) : (
-            <div className="accommodations-grid">
-              {accommodations.map(acc => (
-                <div key={acc._id} className="accommodation-card">
-                  <div className="acc-header">
-                    <h3>{acc.name}</h3>
-                    {acc.isVerified && <span className="verified-badge">✓ Verified</span>}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {properties.length > 0 ? properties.map(property => (
+                <div key={property._id} className="bg-white p-6 rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100 group hover:scale-[1.02] transition-all duration-300">
+                  <div className="flex justify-between items-start mb-6">
+                    <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-xl">
+                      <FiHome />
+                    </div>
+                    <div className={`px-4 py-1 rounded-full text-xs font-black uppercase tracking-widest ${
+                      (property.trustScore || property.safetyScore || 0) >= 80 ? 'bg-green-50 text-green-600' :
+                      (property.trustScore || property.safetyScore || 0) >= 50 ? 'bg-yellow-50 text-yellow-600' : 'bg-red-50 text-red-600'
+                    }`}>
+                      Score: {property.trustScore || property.safetyScore || 0}
+                    </div>
                   </div>
-                  <p className="acc-location">{acc.address}, {acc.city}</p>
-                  <p className="acc-description">{acc.description}</p>
+                  <h3 className="text-lg font-black text-slate-900 mb-1">{property.name}</h3>
+                  <p className="text-sm text-slate-400 font-bold mb-6 flex items-center gap-1">
+                    <FiClock className="inline" /> {property.city}
+                  </p>
                   
-                  <div className="acc-stats">
-                    <div className="acc-stat">
-                      <span className="stat-label">Rooms:</span>
-                      <span className="stat-value">{acc.occupiedRooms}/{acc.totalRooms}</span>
+                  <div className="flex items-center justify-between pt-6 border-t border-slate-50">
+                    <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">{property.totalReports || 0} Reports</span>
+                    <Link to={`/accommodations/${property._id}`} className="p-2 bg-slate-50 text-slate-400 rounded-xl group-hover:bg-emerald-600 group-hover:text-white transition-all">
+                      <FiArrowRight />
+                    </Link>
+                  </div>
+                </div>
+              )) : (
+                <div className="col-span-2 bg-white p-12 rounded-3xl border-2 border-dashed border-slate-200 text-center">
+                  <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <FiPlus className="text-slate-300 text-3xl" />
+                  </div>
+                  <h3 className="text-xl font-black text-slate-900 mb-2">No properties yet</h3>
+                  <p className="text-slate-500 font-bold mb-8">Register your first property to start building trust with students.</p>
+                  <Link to="/owner/add-property" className="inline-flex items-center gap-2 bg-slate-900 text-white px-8 py-3 rounded-xl font-bold hover:bg-slate-800 transition-all">
+                    Register Property <FiArrowRight />
+                  </Link>
+                </div>
+              )}
+            </div>
+
+            {/* Tip section */}
+            <div className="bg-emerald-900 text-white p-8 rounded-3xl relative overflow-hidden">
+              <div className="relative z-10 max-w-md">
+                <h3 className="text-xl font-black mb-2">Improve Your Trust Rating</h3>
+                <p className="text-emerald-100 font-medium mb-6">Quick tip: Responding to student feedback within 48 hours increases your trust score by up to 15%.</p>
+                <button className="bg-white text-emerald-900 px-6 py-2 rounded-xl font-bold text-sm">Learn More</button>
+              </div>
+              <FiTrendingUp className="absolute -bottom-4 -right-4 w-48 h-48 text-emerald-800/50 -rotate-12" />
+            </div>
+          </div>
+
+          {/* Sidebar: Student Feedback */}
+          <div className="space-y-8">
+            <div className="flex justify-between items-center">
+              <h2 className="text-xl font-black text-slate-900">Student Feedback</h2>
+              <span className="bg-slate-200 text-slate-700 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest">
+                {feedbacks.filter(f => f.status !== 'resolved' && f.status !== 'verified').length} Pending
+              </span>
+            </div>
+
+            <div className="space-y-4">
+              {feedbacks.length > 0 ? feedbacks.slice(0, 5).map(feedback => (
+                <div key={feedback._id} className="bg-white p-6 rounded-3xl shadow-lg shadow-slate-200/50 border border-slate-100">
+                  <div className="flex justify-between items-start mb-4">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full">
+                      {feedback.category}
+                    </span>
+                    <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full ${
+                      feedback.status === 'pending' ? 'bg-yellow-50 text-yellow-600' :
+                      feedback.status === 'approved' ? 'bg-blue-50 text-blue-600' :
+                      feedback.status === 'resolved' ? 'bg-green-50 text-green-600' :
+                      feedback.status === 'verified' ? 'bg-emerald-50 text-emerald-600' :
+                      feedback.status === 'disputed' ? 'bg-red-50 text-red-600' : 'bg-slate-50 text-slate-600'
+                    }`}>
+                      {feedback.status}
+                    </span>
+                  </div>
+                  <p className="text-sm font-bold text-slate-900 mb-2 line-clamp-2">{feedback.description}</p>
+                  <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-4">
+                    {feedback.accommodationId?.name || 'Unknown'} • {new Date(feedback.createdAt).toLocaleDateString()}
+                  </p>
+                  
+                  {/* Show respond button only for actionable statuses */}
+                  {(feedback.status === 'pending' || feedback.status === 'approved' || feedback.status === 'disputed') && (
+                    <button 
+                      onClick={() => openResponseModal(feedback)}
+                      className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2"
+                    >
+                      <FiMessageSquare /> Respond Now
+                    </button>
+                  )}
+                  
+                  {feedback.status === 'resolved' && (
+                    <div className="w-full py-2 bg-blue-50 text-blue-600 rounded-xl font-bold text-xs text-center">
+                      ⏳ Awaiting Student Verification
                     </div>
-                    <div className="acc-stat">
-                      <span className="stat-label">Price:</span>
-                      <span className="stat-value">₹{acc.pricePerMonth}/mo</span>
+                  )}
+                  
+                  {feedback.status === 'verified' && (
+                    <div className="w-full py-2 bg-green-50 text-green-600 rounded-xl font-bold text-xs text-center flex items-center justify-center gap-2">
+                      <FiCheckCircle /> Issue Resolved
                     </div>
-                    <div className="acc-stat">
-                      <span className="stat-label">Risk Score:</span>
-                      <span className={`stat-value ${acc.riskScore > 50 ? 'high-risk' : 'low-risk'}`}>
-                        {acc.riskScore}
-                      </span>
+                  )}
+                </div>
+              )) : (
+                <div className="bg-white p-8 rounded-3xl border border-slate-100 text-center">
+                  <FiCheckCircle className="h-12 w-12 text-emerald-500 mx-auto mb-4 opacity-20" />
+                  <p className="text-slate-500 font-bold">No recent feedback</p>
+                  <p className="text-slate-400 text-sm mt-1">Your properties have no reports yet</p>
+                </div>
+              )}
+            </div>
+
+            <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-xl shadow-slate-200/50">
+              <h3 className="font-black text-slate-900 mb-4 flex items-center gap-2">
+                <FiTrendingUp className="text-emerald-600" /> Platform Insights
+              </h3>
+              <div className="space-y-4">
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-slate-500 font-bold">Total Properties</span>
+                  <span className="text-slate-900 font-black">{properties.length}</span>
+                </div>
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-slate-500 font-bold">Total Reports</span>
+                  <span className="text-slate-900 font-black">{feedbacks.length}</span>
+                </div>
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-slate-500 font-bold">Pending Response</span>
+                  <span className={`font-black ${pendingReports > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                    {pendingReports}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-slate-500 font-bold">Avg Trust Score</span>
+                  <span className={`font-black ${
+                    avgScore >= 80 ? 'text-green-600' : 
+                    avgScore >= 50 ? 'text-yellow-600' : 'text-red-600'
+                  }`}>
+                    {avgScore || 'N/A'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Response Modal */}
+      {showResponseModal && selectedFeedback && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            {/* Modal Header */}
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between sticky top-0 bg-white rounded-t-3xl">
+              <div>
+                <h3 className="text-xl font-black text-slate-900">Respond to Report</h3>
+                <p className="text-sm text-slate-500">Explain the action you've taken to resolve this issue</p>
+              </div>
+              <button 
+                onClick={closeResponseModal}
+                className="p-2 hover:bg-slate-100 rounded-xl transition-colors"
+              >
+                <FiX className="h-6 w-6 text-slate-400" />
+              </button>
+            </div>
+
+            {/* Success State */}
+            {responseSuccess ? (
+              <div className="p-12 text-center">
+                <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                  <FiCheck className="h-10 w-10 text-emerald-600" />
+                </div>
+                <h4 className="text-2xl font-black text-slate-900 mb-2">Response Submitted!</h4>
+                <p className="text-slate-500">The student will be notified to verify the resolution.</p>
+              </div>
+            ) : (
+              <div className="p-6 space-y-6">
+                {/* Report Info */}
+                <div className="bg-slate-50 rounded-2xl p-4">
+                  <div className="flex items-start gap-3">
+                    <div className={`p-2 rounded-xl ${
+                      selectedFeedback.status === 'disputed' ? 'bg-red-100 text-red-600' : 'bg-yellow-100 text-yellow-600'
+                    }`}>
+                      <FiAlertCircle className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-xs font-black uppercase tracking-widest text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">
+                          {selectedFeedback.category}
+                        </span>
+                        <span className={`text-xs font-black uppercase tracking-widest px-2 py-0.5 rounded ${
+                          selectedFeedback.status === 'disputed' ? 'bg-red-50 text-red-600' : 'bg-yellow-50 text-yellow-600'
+                        }`}>
+                          {selectedFeedback.status}
+                        </span>
+                      </div>
+                      <p className="text-sm font-semibold text-slate-700">{selectedFeedback.description}</p>
+                      <p className="text-xs text-slate-400 mt-2">
+                        {selectedFeedback.accommodationId?.name} • Reported on {new Date(selectedFeedback.createdAt).toLocaleDateString()}
+                      </p>
                     </div>
                   </div>
+                  
+                  {/* Show report images if any */}
+                  {selectedFeedback.images && selectedFeedback.images.length > 0 && (
+                    <div className="mt-4">
+                      <p className="text-xs font-bold text-slate-500 mb-2">Reported Evidence:</p>
+                      <div className="flex gap-2 flex-wrap">
+                        {selectedFeedback.images.map((img, i) => (
+                          <img 
+                            key={i} 
+                            src={img} 
+                            alt="Report evidence" 
+                            className="w-20 h-20 object-cover rounded-xl border border-slate-200"
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
 
-                  {acc.amenities.length > 0 && (
-                    <div className="acc-amenities">
-                      {acc.amenities.map((amenity, i) => (
-                        <span key={i} className="amenity-tag">{amenity}</span>
+                {/* Response Text */}
+                <div>
+                  <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-400 mb-2">
+                    Your Response / Action Taken <span className="text-red-500">*</span>
+                  </label>
+                  <textarea
+                    value={responseText}
+                    onChange={(e) => setResponseText(e.target.value)}
+                    rows={4}
+                    className="w-full px-4 py-3 bg-slate-50 border-2 border-transparent rounded-xl focus:bg-white focus:border-emerald-500 outline-none transition-all font-semibold resize-none"
+                    placeholder="Describe what action you've taken to resolve this issue. Be specific - this will be shown to the student and helps build trust."
+                  />
+                </div>
+
+                {/* Proof Images */}
+                <div>
+                  <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-400 mb-2">
+                    Proof Images (Optional - Recommended)
+                  </label>
+                  <p className="text-xs text-slate-500 mb-3">
+                    Upload photos showing the resolved issue. This increases credibility and speeds up verification.
+                  </p>
+                  
+                  {/* Image Previews */}
+                  {responseImagePreviews.length > 0 && (
+                    <div className="flex gap-3 flex-wrap mb-4">
+                      {responseImagePreviews.map((preview, index) => (
+                        <div key={index} className="relative group">
+                          <img 
+                            src={preview} 
+                            alt={`Proof ${index + 1}`} 
+                            className="w-24 h-24 object-cover rounded-xl border-2 border-slate-200"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removeImage(index)}
+                            className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <FiX className="h-4 w-4" />
+                          </button>
+                        </div>
                       ))}
                     </div>
                   )}
 
-                  <div className="acc-occupancy">
-                    <label>Update Occupancy:</label>
-                    <input
-                      type="number"
-                      min="0"
-                      max={acc.totalRooms}
-                      value={acc.occupiedRooms}
-                      onChange={(e) => handleUpdateOccupancy(acc._id, parseInt(e.target.value))}
-                    />
-                    <span>/ {acc.totalRooms} rooms</span>
-                  </div>
-
-                  <div className="acc-actions">
-                    <button onClick={() => handleDeleteAccommodation(acc._id)} className="btn-delete-small">Delete</button>
-                  </div>
+                  {/* Upload Button */}
+                  {responseImages.length < 5 && (
+                    <label className="flex items-center justify-center gap-2 px-6 py-4 border-2 border-dashed border-slate-200 rounded-xl cursor-pointer hover:border-emerald-500 hover:bg-emerald-50 transition-all">
+                      <FiUpload className="text-slate-400" />
+                      <span className="font-semibold text-slate-500">Click to upload images</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        onChange={handleImageSelect}
+                        className="hidden"
+                      />
+                    </label>
+                  )}
+                  <p className="text-xs text-slate-400 mt-2">Max 5 images, each up to 5MB</p>
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
 
-      {/* Reports Tab */}
-      {activeTab === 'reports' && (
-        <div className="owner-reports">
-          <h2>Reports on Your Accommodations</h2>
-          
-          {reports.length === 0 ? (
-            <div className="empty-state">
-              <p>No reports on your accommodations. Great job!</p>
-            </div>
-          ) : (
-            <div className="reports-list">
-              {reports.map(report => (
-                <div key={report._id} className={`report-item ${report.status}`}>
-                  <div className="report-header">
-                    <h3>{report.accommodationName}</h3>
-                    <div className="report-badges">
-                      <span className="issue-badge">{report.issueType}</span>
-                      <span className={`status-badge status-${report.status}`}>
-                        {report.status === 'resolved' ? 'Awaiting Student Verification' : report.status}
-                      </span>
-                      {report.status === 'verified' && <span className="status-badge status-verified">Resolved & Verified ✅</span>}
-                      {report.status === 'disputed' && <span className="status-badge status-disputed">Disputed ⚠️</span>}
-                      {report.isCountered && (
-                        <span className={`counter-badge counter-${report.counterStatus}`}>
-                          Counter: {report.counterStatus}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <p className="report-description">{report.description}</p>
-                  <ImageGallery images={report.images} />
-                  <div className="report-meta">
-                    <span>Reported by: {report.user?.name || 'Anonymous'}</span>
-                    <span>{new Date(report.createdAt).toLocaleDateString()}</span>
-                  </div>
-
-                  {report.resolution && (
-                    <div className="resolution-details">
-                      <h4>Owner Resolution</h4>
-                      <p><strong>Action Taken:</strong> {report.resolution.actionTaken}</p>
-                      <p><strong>Description:</strong> {report.resolution.description}</p>
-                      <ImageGallery images={report.resolution.images} />
-                    </div>
-                  )}
-
-                  {report.verification && report.status === 'verified' && report.verification.feedback && (
-                    <div className="verification-details">
-                      <p><strong>Student Feedback:</strong> {report.verification.feedback}</p>
-                    </div>
-                  )}
-
-                  {report.verification && report.status === 'disputed' && report.verification.disputeReason && (
-                    <div className="verification-details dispute">
-                      <p><strong>Dispute Reason:</strong> {report.verification.disputeReason}</p>
-                    </div>
-                  )}
-
-                  <div className="report-actions">
-                    {!report.isCountered && report.status !== 'rejected' && report.status !== 'resolved' && report.status !== 'verified' && (
-                      <button
-                        onClick={() => { setSelectedReport(report); setShowCounterModal(true); }}
-                        className="btn-counter"
-                      >
-                        🛡️ Counter This Report
-                      </button>
+                {/* Submit Button */}
+                <div className="flex gap-4 pt-4">
+                  <button
+                    onClick={submitResponse}
+                    disabled={submittingResponse || !responseText.trim()}
+                    className="flex-1 py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    {submittingResponse ? (
+                      <>
+                        <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                        Submitting...
+                      </>
+                    ) : (
+                      <>
+                        <FiSend /> Submit Response
+                      </>
                     )}
-                    
-                    {(report.status === 'approved' || report.status === 'disputed') && (
-                      <button
-                        onClick={() => { setSelectedReport(report); setShowResolveModal(true); }}
-                        className="btn-resolve"
-                      >
-                        ✅ Resolve Issue
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Counter Reports Tab */}
-      {activeTab === 'counters' && (
-        <div className="owner-counters">
-          <h2>Your Counter Reports</h2>
-          
-          {counterReports.length === 0 ? (
-            <div className="empty-state">
-              <p>No counter reports submitted yet.</p>
-            </div>
-          ) : (
-            <div className="counters-list">
-              {counterReports.map(counter => (
-                <div key={counter._id} className={`counter-item status-${counter.status}`}>
-                  <div className="counter-header">
-                    <h3>{counter.accommodation?.name}</h3>
-                    <span className={`status-badge status-${counter.status}`}>{counter.status}</span>
-                  </div>
-                  <p><strong>Reason:</strong> {counter.reason.replace(/_/g, ' ')}</p>
-                  <p><strong>Explanation:</strong> {counter.explanation}</p>
-                  <p className="counter-date">Submitted: {new Date(counter.createdAt).toLocaleDateString()}</p>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Add Accommodation Modal */}
-      {showAddModal && (
-        <div className="modal-overlay">
-          <div className="modal-content modal-large">
-            <h2>Add New Accommodation</h2>
-            <form onSubmit={handleAddAccommodation}>
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Name</label>
-                  <input
-                    type="text"
-                    value={newAccommodation.name}
-                    onChange={(e) => setNewAccommodation({...newAccommodation, name: e.target.value})}
-                    required
-                  />
-                </div>
-                <div className="form-group">
-                  <label>City</label>
-                  <input
-                    type="text"
-                    value={newAccommodation.city}
-                    onChange={(e) => setNewAccommodation({...newAccommodation, city: e.target.value})}
-                    required
-                  />
+                  </button>
+                  <button
+                    onClick={closeResponseModal}
+                    className="px-8 py-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold transition-all"
+                  >
+                    Cancel
+                  </button>
                 </div>
               </div>
-              <div className="form-group">
-                <label>Address</label>
-                <input
-                  type="text"
-                  value={newAccommodation.address}
-                  onChange={(e) => setNewAccommodation({...newAccommodation, address: e.target.value})}
-                  required
-                />
-              </div>
-              <div className="form-group">
-                <label>Description</label>
-                <textarea
-                  value={newAccommodation.description}
-                  onChange={(e) => setNewAccommodation({...newAccommodation, description: e.target.value})}
-                  required
-                />
-              </div>
-              <div className="form-group">
-                <label>Amenities (comma separated)</label>
-                <input
-                  type="text"
-                  value={newAccommodation.amenities}
-                  onChange={(e) => setNewAccommodation({...newAccommodation, amenities: e.target.value})}
-                  placeholder="WiFi, AC, Laundry, Gym"
-                />
-              </div>
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Total Rooms</label>
-                  <input
-                    type="number"
-                    value={newAccommodation.totalRooms}
-                    onChange={(e) => setNewAccommodation({...newAccommodation, totalRooms: parseInt(e.target.value)})}
-                    required
-                    min="1"
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Price Per Month (₹)</label>
-                  <input
-                    type="number"
-                    value={newAccommodation.pricePerMonth}
-                    onChange={(e) => setNewAccommodation({...newAccommodation, pricePerMonth: parseInt(e.target.value)})}
-                    required
-                    min="0"
-                  />
-                </div>
-              </div>
-              <div className="form-group">
-                <label>Contact Phone</label>
-                <input
-                  type="tel"
-                  value={newAccommodation.contactPhone}
-                  onChange={(e) => setNewAccommodation({...newAccommodation, contactPhone: e.target.value})}
-                  required
-                />
-              </div>
-
-              {/* Location Picker */}
-              <div className="form-group">
-                <LocationPicker
-                  latitude={newLatitude}
-                  longitude={newLongitude}
-                  onLocationChange={(lat, lng) => {
-                    setNewLatitude(lat);
-                    setNewLongitude(lng);
-                  }}
-                />
-              </div>
-
-              <div className="modal-actions">
-                <button type="submit" className="btn-primary">Add Accommodation</button>
-                <button type="button" onClick={() => setShowAddModal(false)} className="btn-secondary">Cancel</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Counter Report Modal */}
-      {showCounterModal && selectedReport && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <h2>Submit Counter Report</h2>
-            <p className="counter-info">
-              Countering report on <strong>{selectedReport.accommodationName}</strong> 
-              regarding <strong>{selectedReport.issueType}</strong>
-            </p>
-            <form onSubmit={handleSubmitCounter}>
-              <div className="form-group">
-                <label>Reason for Counter</label>
-                <select
-                  value={counterForm.reason}
-                  onChange={(e) => setCounterForm({...counterForm, reason: e.target.value})}
-                  required
-                >
-                  <option value="false_information">False Information</option>
-                  <option value="outdated_issue">Issue Already Resolved</option>
-                  <option value="mistaken_identity">Wrong Accommodation</option>
-                  <option value="resolved_issue">Issue Fixed After Report</option>
-                  <option value="malicious_intent">Malicious/Fake Report</option>
-                  <option value="other">Other</option>
-                </select>
-              </div>
-              <div className="form-group">
-                <label>Detailed Explanation</label>
-                <textarea
-                  value={counterForm.explanation}
-                  onChange={(e) => setCounterForm({...counterForm, explanation: e.target.value})}
-                  placeholder="Explain why this report should be reviewed/removed..."
-                  rows={4}
-                  required
-                />
-              </div>
-              <div className="form-group">
-                <label>Evidence Description (Optional)</label>
-                <textarea
-                  value={counterForm.evidenceDescription}
-                  onChange={(e) => setCounterForm({...counterForm, evidenceDescription: e.target.value})}
-                  placeholder="Describe any evidence you have (photos, documents, etc.)"
-                  rows={2}
-                />
-              </div>
-              <div className="modal-actions">
-                <button type="submit" className="btn-primary">Submit Counter Report</button>
-                <button type="button" onClick={() => { setShowCounterModal(false); setSelectedReport(null); }} className="btn-secondary">Cancel</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Resolve Report Modal */}
-      {showResolveModal && selectedReport && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <h2>Resolve Safety Issue</h2>
-            <p className="modal-subtitle">
-              Provide details about how you fixed the issue for <strong>{selectedReport.accommodationName}</strong>
-            </p>
-            <form onSubmit={handleResolveReport}>
-              <div className="form-group">
-                <label>Action Taken <span className="text-red-500">*</span></label>
-                <input
-                  type="text"
-                  value={resolutionForm.actionTaken}
-                  onChange={(e) => setResolutionForm({...resolutionForm, actionTaken: e.target.value})}
-                  placeholder="e.g., Replaced water purifier, Fixed broken lock"
-                  required
-                />
-              </div>
-              <div className="form-group">
-                <label>Detailed Description <span className="text-red-500">*</span></label>
-                <textarea
-                  value={resolutionForm.description}
-                  onChange={(e) => setResolutionForm({...resolutionForm, description: e.target.value})}
-                  placeholder="Describe what was done to fix this issue (min 10 chars)..."
-                  rows={4}
-                  required
-                  minLength={10}
-                />
-              </div>
-              
-              <div className="form-group">
-                <label>Proof Images (Optional)</label>
-                <ImageUpload 
-                  onImagesChange={setResolutionImages} 
-                  uploadedImages={resolutionImages}
-                />
-              </div>
-
-              <div className="modal-actions">
-                <button type="submit" className="btn-primary" disabled={isResolving}>
-                  {isResolving ? 'Submitting...' : 'Submit Resolution'}
-                </button>
-                <button 
-                  type="button" 
-                  onClick={() => { setShowResolveModal(false); setSelectedReport(null); setResolutionImages([]); }} 
-                  className="btn-secondary"
-                  disabled={isResolving}
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
+            )}
           </div>
         </div>
       )}

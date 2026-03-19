@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { ImageGallery } from '../components/ImageGallery';
+import { useNavigate, Link } from 'react-router-dom';
 import { ImageUpload } from '../components/ImageUpload';
-import ErrorBoundary from '../components/ErrorBoundary';
 import ReportCard from '../components/ReportCard';
-
+import { 
+  FiFileText, FiAlertTriangle, FiCheckCircle, FiClock, 
+  FiEdit2, FiTrash2, FiPlus, FiArrowLeft, FiFilter, FiSearch,
+  FiTool, FiCheck, FiX, FiAward
+} from 'react-icons/fi';
 
 interface Image {
   url: string;
@@ -31,6 +33,7 @@ interface Verification {
 interface Report {
   _id: string;
   accommodationName: string;
+  accommodationId?: string;
   issueType: string;
   description: string;
   images?: Image[];
@@ -48,6 +51,7 @@ export default function MyReports() {
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [activeFilter, setActiveFilter] = useState('all');
   const [editingReport, setEditingReport] = useState<Report | null>(null);
   const [editFormData, setEditFormData] = useState({
     accommodationName: '',
@@ -77,7 +81,6 @@ export default function MyReports() {
 
   const fetchMyReports = async () => {
     const token = localStorage.getItem('token');
-
     if (!token) {
       setError('Please login to view your reports');
       setLoading(false);
@@ -92,9 +95,7 @@ export default function MyReports() {
           'Content-Type': 'application/json'
         }
       });
-
       const data = await response.json();
-
       if (data.success) {
         setReports(data.data);
       } else {
@@ -114,7 +115,6 @@ export default function MyReports() {
       issueType: report.issueType,
       description: report.description
     });
-
     setEditImages((report.images || []).map(img => ({
       url: img.url,
       publicId: img.publicId || img.url
@@ -123,27 +123,14 @@ export default function MyReports() {
 
   const handleCancelEdit = () => {
     setEditingReport(null);
-    setEditFormData({
-      accommodationName: '',
-      issueType: '',
-      description: ''
-    });
     setEditImages([]);
   };
 
   const handleUpdateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
     if (!editingReport) return;
-
     const token = localStorage.getItem('token');
     setEditLoading(true);
-
-    // Filter out any invalid images instead of blocking submission
-    const validImages = editImages.filter(img => img.url && img.publicId);
-
-    // Preserve existing images
-    const imagesToSend = editImages.length > 0 ? editImages : (editingReport.images || []);
 
     try {
       const response = await fetch(`${API}/api/reports/${editingReport._id}`, {
@@ -154,55 +141,37 @@ export default function MyReports() {
         },
         body: JSON.stringify({
           ...editFormData,
-          images: imagesToSend
+          images: editImages
         })
       });
-
       const data = await response.json();
-
       if (data.success) {
-        alert('Report updated successfully!');
         setEditingReport(null);
-        setEditImages([]);
-        fetchMyReports(); // Refresh the list
+        fetchMyReports();
       } else {
         alert(data.message || 'Failed to update report');
       }
     } catch (err) {
       alert('Error updating report');
-      console.error(err);
     } finally {
       setEditLoading(false);
     }
   };
 
   const handleDelete = async (reportId: string) => {
-    if (!window.confirm('Are you sure you want to delete this report? This action cannot be undone.')) {
-      return;
-    }
-
+    if (!window.confirm('Delete this report? This cannot be undone.')) return;
     const token = localStorage.getItem('token');
-
     try {
       const response = await fetch(`${API}/api/reports/${reportId}`, {
         method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
+        headers: { 'Authorization': `Bearer ${token}` }
       });
-
       const data = await response.json();
-
       if (data.success) {
-        alert('Report deleted successfully!');
-        fetchMyReports(); // Refresh the list
-      } else {
-        alert(data.message || 'Failed to delete report');
+        fetchMyReports();
       }
     } catch (err) {
       alert('Error deleting report');
-      console.error(err);
     }
   };
 
@@ -221,165 +190,266 @@ export default function MyReports() {
           disputeReason: !accepted ? feedbackOrReason : ''
         })
       });
-
       const data = await response.json();
       if (data.success) {
-        alert(accepted ? 'Resolution verified!' : 'Resolution disputed.');
         fetchMyReports();
-      } else {
-        alert(data.message || 'Failed to verify');
       }
     } catch (err) {
       alert('Error verifying resolution');
     }
   };
 
-  if (loading) {
-    return (
-      <div className="container">
-        <div className="loading">Loading your reports...</div>
-      </div>
-    );
-  }
+  const filteredReports = reports.filter(r => {
+    if (activeFilter === 'all') return true;
+    if (activeFilter === 'pending') return r.status === 'pending';
+    if (activeFilter === 'approved') return r.status === 'approved';
+    if (activeFilter === 'resolved') return r.status === 'resolved';
+    if (activeFilter === 'verified') return r.status === 'verified';
+    if (activeFilter === 'disputed') return r.status === 'disputed';
+    return true;
+  });
 
-  if (error) {
-    return (
-      <div className="container">
-        <div className="error">{error}</div>
-      </div>
-    );
-  }
+  const stats = [
+    { label: 'Total Contributions', value: reports.length, icon: <FiFileText />, color: 'text-blue-600', bg: 'bg-blue-50' },
+    { label: 'Pending Review', value: reports.filter(r => r.status === 'pending').length, icon: <FiClock />, color: 'text-yellow-600', bg: 'bg-yellow-50' },
+    { label: 'Owner Responded', value: reports.filter(r => r.status === 'resolved').length, icon: <FiTool />, color: 'text-purple-600', bg: 'bg-purple-50' },
+    { label: 'Issues Verified', value: reports.filter(r => r.status === 'verified').length, icon: <FiCheckCircle />, color: 'text-green-600', bg: 'bg-green-50' },
+  ];
+
+  if (loading) return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+    </div>
+  );
 
   return (
-    <div className="container">
-      <div className="my-reports-header">
-        <h1>My Safety Reports</h1>
-        <p className="subtitle">Total Reports: {(reports || []).length}</p>
+    <div className="min-h-screen bg-gray-50 pb-24">
+      {/* Header */}
+      <div className="bg-gradient-to-br from-slate-900 via-blue-900 to-indigo-900 pt-16 pb-24 relative overflow-hidden">
+        <div className="absolute inset-0 bg-blue-600/5 mix-blend-overlay"></div>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+          <Link to="/dashboard" className="inline-flex items-center text-blue-300 hover:text-white mb-10 font-bold transition-all gap-2">
+            <FiArrowLeft /> Back to Dashboard
+          </Link>
+          
+          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-8">
+            <div>
+              <h1 className="text-4xl lg:text-5xl font-black text-white tracking-tight mb-4">
+                Your Safety Reports
+              </h1>
+              <p className="text-xl text-blue-200 font-medium max-w-2xl">
+                Track the impact of your contributions and manage your verified safety reports.
+              </p>
+            </div>
+            <Link
+              to="/report"
+              className="bg-white text-slate-900 px-8 py-4 rounded-2xl font-black shadow-xl hover:bg-blue-50 transition-all flex items-center gap-2 whitespace-nowrap"
+            >
+              <FiPlus className="text-xl" /> Report New Issue
+            </Link>
+          </div>
+
+          {/* Header Stats Row */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-12">
+            {stats.map((stat, i) => (
+              <div key={i} className="bg-white/5 backdrop-blur-md border border-white/10 p-6 rounded-[2rem] flex items-center gap-4">
+                <div className={`w-12 h-12 ${stat.bg} ${stat.color} rounded-2xl flex items-center justify-center text-xl`}>
+                  {stat.icon}
+                </div>
+                <div>
+                  <p className="text-2xl font-black text-white">{stat.value}</p>
+                  <p className="text-[10px] font-black text-blue-200/60 uppercase tracking-widest leading-none">{stat.label}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-10 relative z-20">
+        {/* Filters Card */}
+        <div className="bg-white rounded-3xl shadow-xl p-6 lg:p-8 mb-10 border border-gray-100">
+          <div className="flex flex-col md:flex-row justify-between items-center gap-6">
+            <div className="flex gap-2 flex-wrap items-center">
+              <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest mr-2 flex items-center gap-2">
+                <FiFilter /> Filter By
+              </span>
+              {[
+                { id: 'all', label: 'All Reports' },
+                { id: 'pending', label: '⏳ Pending' },
+                { id: 'approved', label: '✅ Published' },
+                { id: 'resolved', label: '🔧 Resolved' },
+                { id: 'verified', label: '🎉 Verified' },
+                { id: 'disputed', label: '⚠️ Disputed' }
+              ].map(filter => (
+                <button
+                  key={filter.id}
+                  onClick={() => setActiveFilter(filter.id)}
+                  className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-all duration-200 ${
+                    activeFilter === filter.id 
+                      ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/25' 
+                      : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
+                  }`}
+                >
+                  {filter.label}
+                </button>
+              ))}
+            </div>
+            
+            <div className="relative w-full md:w-64">
+              <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input 
+                type="text" 
+                placeholder="Search your reports..."
+                className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all outline-none text-sm font-bold text-gray-700"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Content Section */}
+        {filteredReports.length === 0 ? (
+          <div className="text-center py-24 bg-white rounded-[2.5rem] shadow-sm border border-gray-100 max-w-2xl mx-auto">
+            <div className="w-24 h-24 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-8">
+              <FiFileText className="text-gray-300 text-4xl" />
+            </div>
+            <h3 className="text-2xl font-black text-slate-900 mb-2">You haven't filed any reports yet</h3>
+            <p className="text-slate-500 font-medium mb-10 max-w-sm mx-auto px-4">
+              Spotted a safety issue? Your voice matters! Your contributions can protect thousands of other students.
+            </p>
+            <Link 
+              to="/report" 
+              className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-10 py-4 rounded-2xl font-black shadow-xl shadow-blue-500/25 hover:shadow-2xl transition-all inline-flex items-center gap-2"
+            >
+              Report an Issue <FiArrowRight />
+            </Link>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 lg:gap-10">
+            {filteredReports.map((report) => (
+              <ReportCard
+                key={report._id}
+                report={report}
+                onEdit={handleEdit}
+                onDelete={handleDelete}
+                onVerify={handleVerify}
+                currentUserId={currentUserId}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Impact Message */}
+        <div className="mt-16 p-10 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-[2.5rem] shadow-2xl relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-10 opacity-10">
+            <FiAward className="w-48 h-48 text-white" />
+          </div>
+          <div className="relative z-10 max-w-3xl">
+            <h3 className="text-3xl font-black text-white mb-4">Safety Champion Status</h3>
+            <p className="text-xl text-blue-100 font-medium mb-8">
+              Your verified reports have helped thousands of students make safer housing choices. Keep contributing to build a more transparent accommodation network.
+            </p>
+            <div className="flex items-center gap-6">
+              <div className="flex -space-x-3">
+                {[1, 2, 3, 4, 5].map(i => (
+                  <div key={i} className="w-12 h-12 rounded-full border-4 border-blue-600 bg-blue-100 flex items-center justify-center font-black text-blue-600 text-xs">
+                    {String.fromCharCode(64 + i)}
+                  </div>
+                ))}
+              </div>
+              <p className="text-sm font-bold text-blue-100">Joined by 10,000+ students nationwide</p>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Edit Modal */}
       {editingReport && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <h2>Edit Report</h2>
-            <form onSubmit={handleUpdateSubmit}>
-              <div className="form-group">
-                <label>Accommodation Name</label>
-                <input
-                  type="text"
-                  value={editFormData.accommodationName}
-                  onChange={(e) => setEditFormData({...editFormData, accommodationName: e.target.value})}
-                  required
-                />
-              </div>
-              <div className="form-group">
-                <label>Issue Type</label>
-                <select
-                  value={editFormData.issueType}
-                  onChange={(e) => setEditFormData({...editFormData, issueType: e.target.value})}
-                  required
-                >
-                  <option value="Food Safety">Food Safety</option>
-                  <option value="Water Quality">Water Quality</option>
-                  <option value="Hygiene">Hygiene</option>
-                  <option value="Security">Security</option>
-                  <option value="Infrastructure">Infrastructure</option>
-                </select>
-              </div>
-              <div className="form-group">
-                <label>Description</label>
-                <textarea
-                  value={editFormData.description}
-                  onChange={(e) => setEditFormData({...editFormData, description: e.target.value})}
-                  rows={4}
-                  required
-                />
-              </div>
-              <div className="form-group">
-                <label>Evidence Photos</label>
-                {editImages && editImages.length > 0 && (
-                  <div style={{marginBottom: '15px'}}>
-                    <label style={{display: 'block', marginBottom: '8px', fontWeight: '600'}}>
-                      Current Images:
-                    </label>
-                    <div style={{display: 'flex', gap: '10px', flexWrap: 'wrap'}}>
-                      {editImages.map((img, index) => (
-                        <div key={index} style={{position: 'relative', width: '100px', height: '100px'}}>
-                          <img
-                            src={img.url}
-                            alt={'Report image ' + (index + 1)}
-                            style={{
-                              width: '100%',
-                              height: '100%',
-                              objectFit: 'cover',
-                              borderRadius: '8px',
-                              border: '1px solid #e5e7eb'
-                            }}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setEditImages(prev => prev.filter((_, i) => i !== index))}
-                            style={{
-                              position: 'absolute',
-                              top: '-8px',
-                              right: '-8px',
-                              background: '#ef4444',
-                              color: 'white',
-                              border: 'none',
-                              borderRadius: '50%',
-                              width: '22px',
-                              height: '22px',
-                              cursor: 'pointer',
-                              fontSize: '12px',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              boxShadow: '0 1px 3px rgba(0,0,0,0.3)'
-                            }}
-                          >✕</button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                <ImageUpload
-                  uploadedImages={editImages}
-                  onImagesChange={setEditImages}
-                />
-              </div>
-              <div className="modal-actions">
-                <button type="submit" className="btn-primary" disabled={editLoading}>
-                  {editLoading ? 'Saving...' : 'Save Changes'}
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto relative">
+            <div className="p-8 lg:p-12">
+              <div className="flex justify-between items-center mb-10">
+                <div>
+                  <h2 className="text-3xl font-black text-slate-900 tracking-tight">Edit Your Report</h2>
+                  <p className="text-slate-500 font-bold mt-1 uppercase tracking-widest text-[10px]">Update safety information</p>
+                </div>
+                <button onClick={handleCancelEdit} className="p-3 bg-gray-50 hover:bg-gray-100 rounded-2xl transition-all">
+                  <FiX className="h-6 w-6 text-gray-400" />
                 </button>
-                <button type="button" onClick={handleCancelEdit} className="btn-secondary">Cancel</button>
               </div>
-            </form>
-          </div>
-        </div>
-      )}
+              
+              <form onSubmit={handleUpdateSubmit} className="space-y-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1">Accommodation Name</label>
+                    <input
+                      type="text"
+                      className="w-full px-5 py-4 bg-gray-50 border border-gray-100 rounded-2xl focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all outline-none font-bold text-slate-900"
+                      value={editFormData.accommodationName}
+                      onChange={(e) => setEditFormData({...editFormData, accommodationName: e.target.value})}
+                      required
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1">Issue Category</label>
+                    <select
+                      className="w-full px-5 py-4 bg-gray-50 border border-gray-100 rounded-2xl focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all outline-none font-bold text-slate-900 appearance-none"
+                      value={editFormData.issueType}
+                      onChange={(e) => setEditFormData({...editFormData, issueType: e.target.value})}
+                      required
+                    >
+                      <option value="Food Safety">Food Safety</option>
+                      <option value="Water Quality">Water Quality</option>
+                      <option value="Hygiene">Hygiene</option>
+                      <option value="Security">Security</option>
+                      <option value="Infrastructure">Infrastructure</option>
+                    </select>
+                  </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1">Description of Issue</label>
+                  <textarea
+                    className="w-full px-5 py-4 bg-gray-50 border border-gray-100 rounded-2xl focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all outline-none min-h-[160px] font-medium text-slate-700 leading-relaxed"
+                    value={editFormData.description}
+                    onChange={(e) => setEditFormData({...editFormData, description: e.target.value})}
+                    rows={5}
+                    required
+                  />
+                </div>
 
-      { (reports || []).length === 0 ? (
-        <div className="empty-state">
-          <p>You haven't submitted any reports yet.</p>
-          <button 
-            onClick={() => navigate('/report')}
-            className="btn-primary"
-          >
-            Submit Your First Report
-          </button>
-        </div>
-      ) : (
-        <div className="reports-grid">
-          {(reports || []).map((report) => (
-            <ReportCard
-              key={report._id}
-              report={report}
-              onEdit={handleEdit}
-              onDelete={handleDelete}
-              onVerify={handleVerify}  // ✅ THIS WAS MISSING!
-              currentUserId={currentUserId}
-            />
-          ))}
+                <div className="space-y-4">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1 flex items-center gap-2">
+                    <FiUpload /> Evidence Management
+                  </label>
+                  <div className="bg-gray-50 p-8 rounded-[2rem] border-2 border-dashed border-gray-200">
+                    <ImageUpload
+                      uploadedImages={editImages}
+                      onImagesChange={setEditImages}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-4 pt-6 border-t border-gray-50">
+                  <button 
+                    type="submit" 
+                    className="flex-grow py-5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-black rounded-2xl hover:shadow-2xl hover:shadow-blue-500/25 transition-all disabled:opacity-50"
+                    disabled={editLoading}
+                  >
+                    {editLoading ? 'Processing Updates...' : 'Save & Publish Changes'}
+                  </button>
+                  <button 
+                    type="button" 
+                    onClick={handleCancelEdit} 
+                    className="px-10 py-5 bg-gray-100 text-slate-600 font-black rounded-2xl hover:bg-gray-200 transition-all"
+                  >
+                    Discard
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
         </div>
       )}
     </div>

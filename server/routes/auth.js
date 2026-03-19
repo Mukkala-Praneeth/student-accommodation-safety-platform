@@ -60,7 +60,16 @@ router.post("/signup", async (req, res) => {
     await otpDoc.save();
 
     // Send email in background — dont block response
+    const { sendWelcomeEmail } = require('../utils/emailService');
+    const verifyLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/verify-email`;
+    
     sendOTPEmail(newUser.email, otp, 'verification');
+    
+    try {
+      sendWelcomeEmail(newUser.email, newUser.name, verifyLink);
+    } catch (emailError) {
+      console.error('Welcome email failed:', emailError);
+    }
 
     res.status(201).json({
       success: true,

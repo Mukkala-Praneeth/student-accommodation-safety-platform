@@ -1337,7 +1337,7 @@ app.post('/api/otp/reset-password', async (req, res) => {
     const { email, otp, newPassword } = req.body;
 
     if (!email || !otp || !newPassword) {
-      return res.status(400).json({ success: false, message: 'Email, OTP, and new password are required' });
+      return res.status(400).json({ success: false, message: 'Emaiil, OTP, and new password are required' });
     }
 
     if (newPassword.length < 6) {

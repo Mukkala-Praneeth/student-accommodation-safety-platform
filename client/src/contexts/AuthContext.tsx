@@ -11,25 +11,63 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<any>;
-  register: (name: string, email: string, password: string, role: 'student' | 'owner') => Promise<void>;
   logout: () => void;
+  refreshUser: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const API = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<User | null>(() => {
+    // Initialize from localStorage immediately (not in useEffect)
+    const storedUser = localStorage.getItem('user');
+    const storedToken = localStorage.getItem('token');
+    if (storedUser && storedToken) {
+      try {
+        return JSON.parse(storedUser);
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  });
   const [loading, setLoading] = useState(true);
 
+  // Verify token on mount
   useEffect(() => {
-    // Check if user is logged in (from localStorage)
-    const storedUser = localStorage.getItem('user');
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
-    }
-    setLoading(false);
-  }, []);
+    const verifyAuth = async () => {
+      const storedToken = localStorage.getItem('token');
+      const storedUser = localStorage.getItem('user');
+      
+      if (storedToken && storedUser) {
+        try {
+          // Optional: Verify token with backend
+          const res = await fetch(`${API}/api/profile`, {
+            headers: {
+              'Authorization': `Bearer ${storedToken}`
+            }
+          });
+          
+          if (res.ok) {
+            // Token is valid, keep user
+            setUser(JSON.parse(storedUser));
+          } else {
+            // Token invalid, clear storage
+            localStorage.removeItem('user');
+            localStorage.removeItem('token');
+            setUser(null);
+          }
+        } catch {
+          // Network error, keep cached user (offline support)
+          setUser(JSON.parse(storedUser));
+        }
+      }
+      setLoading(false);
+    };
+
+    verifyAuth();
+  }, [API]);
 
   const login = async (email: string, password: string): Promise<any> => {
     const res = await fetch(`${API}/api/auth/login`, {
@@ -42,33 +80,25 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const data = await res.json();
 
-    if (res.ok) {
-      localStorage.setItem("user", JSON.stringify(data.user));
+    if (res.ok && data.token) {
+      const userData = data.user || data.data?.user;
+      localStorage.setItem("user", JSON.stringify(userData));
       localStorage.setItem("token", data.token);
-      setUser(data.user);
-      return data.user;
+      setUser(userData);
+      return userData;
     } else {
       throw new Error(data.message || "Invalid credentials");
     }
   };
 
-  const register = async (name: string, email: string, password: string, role: 'student' | 'owner'): Promise<void> => {
-    const res = await fetch(`${API}/api/auth/signup`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ name, email, password, role }),
-    });
-
-    const data = await res.json();
-   
-
-    if (res.ok && data.success) {
-      // Automatically login after signup
-      await login(email, password);
-    } else {
-      throw new Error(data.message || "Registration failed");
+  const refreshUser = () => {
+    const storedUser = localStorage.getItem('user');
+    if (storedUser) {
+      try {
+        setUser(JSON.parse(storedUser));
+      } catch {
+        setUser(null);
+      }
     }
   };
 
@@ -79,7 +109,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

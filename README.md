@@ -4,6 +4,8 @@ A production-quality full-stack web application designed to ensure safety and tr
 
 This platform enables **verified students** to report safety issues securely, helps future students make informed decisions, and creates accountability for accommodation providers.
 
+![Platform Banner](https://img.shields.io/badge/Status-Production%20Ready-brightgreen) ![Version](https://img.shields.io/badge/Version-2.0.0-blue) ![License](https://img.shields.io/badge/License-MIT-yellow)
+
 ---
 
 ## 🚀 Why This Platform Exists
@@ -35,10 +37,11 @@ This platform introduces **verified, accountable, student-driven safety intellig
 - Profile Management with Password Change
 - OTP Email Verification
 - Forgot Password with OTP Reset
+- Role-Based Dashboard Redirects
 
 ### 📊 Safety Reporting System
 - Verified Student Reporting
-- **Reports Linked to Registered Accommodations Only** (Dropdown Selection)
+- Reports Linked to Registered Accommodations Only (Dropdown Selection)
 - Anonymous Public Identity ("Verified Resident")
 - Categorized Incident Reporting:
   - Food Safety
@@ -50,23 +53,25 @@ This platform introduces **verified, accountable, student-driven safety intellig
 - Report Edit & Delete
 
 ### 🔧 Report Resolution System
-- **Complete Lifecycle:** Report → Approve → Resolve → Verify/Dispute
+- Complete Lifecycle: Report → Approve → Resolve → Verify/Dispute
 - Owner resolves reports with action description and proof images
 - Student verifies fix ("Yes, Issue is Fixed") or disputes ("No, Issue Persists")
 - Admin can reopen disputed reports for owner to retry
 - Trust score updates dynamically based on resolution outcomes
-- **6 Report Statuses:** Pending → Approved → Resolved → Verified / Disputed / Rejected
+- 6 Report Statuses: Pending → Approved → Resolved → Verified / Disputed / Rejected
+- In-Page Resolution Modal (Owner can resolve directly from accommodation detail)
 
 ### 🗺️ Interactive Map with Location Search
-- **OpenStreetMap Integration** with colored safety markers
+- OpenStreetMap Integration with colored safety markers
 - 🟢 Green = Safe (Trust Score ≥ 80)
 - 🟡 Yellow = Caution (Trust Score 50-79)
 - 🔴 Red = Unsafe (Trust Score < 50)
-- **Location Search Bar** (Search any city, area, landmark)
-- **GPS "My Location" Button** for nearby accommodation discovery
-- **Radius Filter** (2km, 5km, 10km, 20km, 50km)
-- **Nearby Accommodations List** sorted by distance
+- Location Search Bar (Search any city, area, landmark)
+- GPS "My Location" Button for nearby accommodation discovery
+- Radius Filter (2km, 5km, 10km, 20km, 50km)
+- Nearby Accommodations List sorted by distance
 - Fly-to animation when searching locations
+- Embedded Map on Accommodation Detail Page
 - Powered by OpenStreetMap Nominatim API (FREE, no API key needed)
 
 ### 📈 Dynamic Trust Score System
@@ -87,7 +92,7 @@ This platform introduces **verified, accountable, student-driven safety intellig
 
 ### 🧠 Accountability Architecture
 - Reports linked to verified users (Prevents fake reviews)
-- **Reports linked to registered accommodations via ObjectId**
+- Reports linked to registered accommodations via ObjectId
 - One user → Multiple reports tracking
 - Upvote validation prevents fake confirmations
 - Owner resolution with proof images
@@ -99,29 +104,42 @@ This platform introduces **verified, accountable, student-driven safety intellig
 - Accommodation Risk Visibility
 - Paginated Report Listing
 - Error States with Retry Buttons
+- Role-Based Dashboard Navigation
 
-### 👤 User Profile
+### 👤 User Profile (Role-Based UI)
 - View profile info (name, email, role, member since)
 - Edit display name
 - Change password securely
-- Activity stats (total reports, upvotes received)
+- Student Profile:
+  - Activity stats (total reports, upvotes received, issues resolved)
+  - Blue/Indigo theme
+  - Student-focused notifications
+- Owner Profile:
+  - Property stats (properties managed, avg trust score, resolution rate)
+  - Emerald/Teal theme
+  - Owner-focused notifications
+  - Quick action buttons (View Dashboard, Add Property)
 
 ### 🏢 Owner Dashboard
 - View reports against owned properties
-- **Resolve safety issues with proof**
+- Resolve safety issues with proof
 - Submit counter-evidence against reports
 - Property management (Add/Edit/Delete accommodations)
+- Edit Property Mode (Pre-filled form with existing data)
 - Location picker with latitude/longitude
 - Room occupancy tracking
+- Role-Based Accommodation Detail View:
+  - Owner sees: Edit buttons, Resolve buttons, Analytics
+  - Student sees: Report button, Contact info, Living Here card
 
 ### 🛡 Admin Moderation Panel
-- Review submitted reports with **status filters**
+- Review submitted reports with status filters
 - Approve or reject reports
-- **View resolution details and proof**
-- **Reopen disputed reports** for owner to resolve again
+- View resolution details and proof
+- Reopen disputed reports for owner to resolve again
 - User management (Ban/Unban)
 - Review counter reports
-- **Overview stats** (Pending, Approved, Resolved, Verified, Disputed)
+- Overview stats (Pending, Approved, Resolved, Verified, Disputed)
 
 ---
 
@@ -138,6 +156,8 @@ This platform introduces **verified, accountable, student-driven safety intellig
 | Context API | State Management |
 | Leaflet | Interactive Maps |
 | OpenStreetMap | Map Tiles & Geocoding |
+| React Icons | Icon Library |
+| date-fns | Date Formatting |
 
 ### ⚙ Backend
 | Technology | Purpose |
@@ -156,109 +176,178 @@ This platform introduces **verified, accountable, student-driven safety intellig
 ## 🧱 System Architecture
 
     Frontend (React + TypeScript + Leaflet Maps)
-         ↓
-    Auth Context + Protected Routes
-         ↓
+             ↓
+    Auth Context + Protected Routes + Role-Based UI
+             ↓
     Backend (Express REST API)
-         ↓
+             ↓
     Auth Middleware (JWT Verification)
-         ↓
+             ↓
     MongoDB Atlas (Users + Reports + Accommodations + CounterReports + OTPs)
-         ↓
+             ↓
     Cloudinary (Image Storage) + Nominatim (Geocoding)
 
 ---
 
 ## 📂 Project Structure
 
-    client/                              # React Frontend
-    ├── src/
-    │   ├── components/
-    │   │   ├── AccommodationMap.tsx      # Interactive map with search & GPS
-    │   │   ├── ImageWithFallback.tsx     # Image display with loading & error states
-    │   │   ├── ImageGallery.tsx          # Gallery with empty state placeholder
-    │   │   ├── ImageUpload.tsx           # Cloudinary upload component
-    │   │   ├── LocationPicker.tsx        # Lat/Lng picker for owners
-    │   │   ├── ReportCard.tsx            # Report card with resolution UI
-    │   │   ├── TrustScoreBadge.tsx       # Trust score color badge
-    │   │   ├── UpvoteButton.tsx          # Upvote toggle with optimistic updates
-    │   │   └── ErrorBoundary.tsx         # Graceful error handling wrapper
-    │   ├── pages/
-    │   │   ├── Home.tsx                  # Landing page
-    │   │   ├── Login.tsx                 # Student login
-    │   │   ├── Register.tsx              # Student registration
-    │   │   ├── Dashboard.tsx             # Main dashboard with reports & map
-    │   │   ├── MyReports.tsx             # User reports with verification UI
-    │   │   ├── Profile.tsx               # User profile management
-    │   │   ├── ReportIncident.tsx        # Submit report (accommodation dropdown)
-    │   │   ├── AccommodationDetail.tsx   # Single accommodation with reports
-    │   │   ├── AccommodationList.tsx     # Search & browse accommodations
-    │   │   ├── AdminDashboard.tsx        # Admin moderation with resolution view
-    │   │   ├── OwnerDashboard.tsx        # Owner property & resolution management
-    │   │   ├── OwnerLogin.tsx            # Owner login
-    │   │   └── OwnerRegister.tsx         # Owner registration
-    │   ├── contexts/
-    │   │   └── AuthContext.tsx           # Authentication state management
-    │   └── App.tsx                       # Router & app entry
+    student-accommodation-safety-platform/
     │
-    server/                              # Express Backend
-    ├── models/
-    │   ├── User.js                      # User schema
-    │   ├── Report.js                    # Report schema with resolution & verification
-    │   ├── Accommodation.js             # Accommodation schema with trust score
-    │   ├── CounterReport.js             # Counter evidence schema
-    │   └── OTP.js                       # OTP verification schema
-    ├── middleware/
-    │   ├── authMiddleware.js            # JWT verification
-    │   ├── adminMiddleware.js           # Admin role check
-    │   └── ownerMiddleware.js           # Owner role check
-    ├── routes/
-    │   └── auth.js                      # Authentication routes
-    ├── utils/
-    │   ├── trustScore.js                # Trust score calculation algorithm
-    │   └── emailService.js              # OTP email sending service
-    ├── config/
-    │   ├── db.js                        # MongoDB connection
-    │   └── cloudinary.js                # Cloudinary configuration
-    └── server.js                        # Express app & all API routes
+    ├── client/                              # React Frontend
+    │   ├── src/
+    │   │   ├── components/
+    │   │   │   ├── AccommodationMap.tsx      # Interactive map with search & GPS
+    │   │   │   ├── ErrorBoundary.tsx         # Graceful error handling wrapper
+    │   │   │   ├── Footer.tsx                # Footer (Home page only)
+    │   │   │   ├── Header.tsx                # Navigation header
+    │   │   │   ├── ImageGallery.tsx          # Gallery with empty state
+    │   │   │   ├── ImageUpload.tsx           # Cloudinary upload component
+    │   │   │   ├── ImageWithFallback.tsx     # Image with loading/error states
+    │   │   │   ├── LocationPicker.tsx        # Lat/Lng picker for owners
+    │   │   │   ├── ReportCard.tsx            # Report card with resolution UI
+    │   │   │   ├── TrustScoreBadge.tsx       # Trust score color badge
+    │   │   │   └── UpvoteButton.tsx          # Upvote toggle component
+    │   │   │
+    │   │   ├── pages/
+    │   │   │   ├── AccommodationDetail.tsx   # Role-based accommodation view
+    │   │   │   ├── AccommodationList.tsx     # Search & browse accommodations
+    │   │   │   ├── AddProperty.tsx           # Add/Edit property (dual mode)
+    │   │   │   ├── AdminDashboard.tsx        # Admin moderation panel
+    │   │   │   ├── Dashboard.tsx             # Student dashboard
+    │   │   │   ├── ForgotPassword.tsx        # Password reset with OTP
+    │   │   │   ├── Home.tsx                  # Landing page with role-based CTA
+    │   │   │   ├── Login.tsx                 # Student login
+    │   │   │   ├── MyReports.tsx             # User reports with verification
+    │   │   │   ├── OwnerDashboard.tsx        # Owner property management
+    │   │   │   ├── OwnerLogin.tsx            # Owner login
+    │   │   │   ├── OwnerRegister.tsx         # Owner registration
+    │   │   │   ├── Profile.tsx               # Role-based profile (Student/Owner)
+    │   │   │   ├── Register.tsx              # Student registration
+    │   │   │   ├── ReportIncident.tsx        # Submit report form
+    │   │   │   ├── ReportSafety.tsx          # Safety report page
+    │   │   │   └── VerifyEmail.tsx           # Email OTP verification
+    │   │   │
+    │   │   ├── contexts/
+    │   │   │   ├── AccommodationContext.tsx  # Accommodation state
+    │   │   │   └── AuthContext.tsx           # Authentication state
+    │   │   │
+    │   │   ├── utils/
+    │   │   │   └── cn.ts                     # Utility functions
+    │   │   │
+    │   │   ├── App.tsx                       # Router & conditional footer
+    │   │   ├── index.css                     # Global styles
+    │   │   └── main.tsx                      # App entry point
+    │   │
+    │   ├── package.json
+    │   └── vite.config.ts
+    │
+    ├── server/                              # Express Backend
+    │   ├── models/
+    │   │   ├── Accommodation.js             # Accommodation schema with trust score
+    │   │   ├── CounterReport.js             # Counter evidence schema
+    │   │   ├── OTP.js                       # OTP verification schema
+    │   │   ├── Report.js                    # Report schema with resolution
+    │   │   └── User.js                      # User schema
+    │   │
+    │   ├── middleware/
+    │   │   ├── adminMiddleware.js           # Admin role check
+    │   │   ├── authMiddleware.js            # JWT verification
+    │   │   └── ownerMiddleware.js           # Owner role check
+    │   │
+    │   ├── routes/
+    │   │   └── auth.js                      # Authentication routes
+    │   │
+    │   ├── utils/
+    │   │   ├── emailService.js              # Email sending service
+    │   │   ├── emailTemplates.js            # Email HTML templates
+    │   │   └── trustScore.js                # Trust score algorithm
+    │   │
+    │   ├── config/
+    │   │   └── cloudinary.js                # Cloudinary configuration
+    │   │
+    │   ├── server.js                        # Express app & API routes
+    │   ├── package.json
+    │   ├── .env.example
+    │   └── .gitignore
+    │
+    └── README.md
 
 ---
 
 ## 🔥 Implemented Features
 
-✅ User Signup & Login API
-✅ JWT Token Generation & Verification
-✅ Auth Middleware Protection
-✅ Role-Based Access Control (Student / Owner / Admin)
-✅ OTP Email Verification & Password Reset
-✅ User Collection (MongoDB Atlas)
-✅ Report Collection with Resolution & Verification Fields
-✅ Accommodation Collection with Trust Scores
-✅ Counter Report Collection
-✅ User → Report Relational Mapping
-✅ Report → Accommodation Linking (ObjectId)
-✅ Protected Report Submission (Dropdown Only)
-✅ Cloudinary Image Evidence Upload
-✅ My Reports with Pagination & Verification UI
-✅ Report Edit & Delete
-✅ Report Resolution System (Owner Resolves → Student Verifies)
-✅ Admin Moderation Panel (Approve / Reject / Reopen)
-✅ Owner Dashboard & Property Management
-✅ Owner Resolution with Proof Images
-✅ Accommodation Search & Trust Score Ratings
-✅ Interactive Map with OpenStreetMap
-✅ Location Search (Nominatim Geocoding)
-✅ GPS-based Nearby Accommodation Discovery
-✅ Radius-based Filtering (2-50 km)
-✅ Dynamic Trust Score Algorithm (0-100)
-✅ Upvote & Confirm Reports ("I experienced this too")
-✅ User Profile Page (Edit Name, Change Password, Stats)
-✅ Image Error Handling (ImageWithFallback component)
-✅ Error Boundaries for Graceful Crash Recovery
-✅ Error States with Retry Buttons
-✅ Input Validation & Regex Injection Prevention
-✅ ObjectId Validation on All Routes
-✅ Performance Optimizations (React.memo, useCallback, Pagination, .lean(), DB Indexing)
+### ✅ Authentication & Authorization
+- User Signup & Login API
+- JWT Token Generation & Verification
+- Auth Middleware Protection
+- Role-Based Access Control (Student / Owner / Admin)
+- OTP Email Verification & Password Reset
+- Role-Based Dashboard Redirects (Home page "Go to Dashboard" button)
+
+### ✅ Data Models
+- User Collection (MongoDB Atlas)
+- Report Collection with Resolution & Verification Fields
+- Accommodation Collection with Trust Scores
+- Counter Report Collection
+- OTP Collection
+
+### ✅ Report System
+- User → Report Relational Mapping
+- Report → Accommodation Linking (ObjectId)
+- Protected Report Submission (Dropdown Only)
+- Cloudinary Image Evidence Upload
+- My Reports with Pagination & Verification UI
+- Report Edit & Delete
+- Report Resolution System (Owner Resolves → Student Verifies)
+- In-Page Resolution Modal
+
+### ✅ Admin Features
+- Admin Moderation Panel (Approve / Reject / Reopen)
+- User Management (Ban/Unban)
+- Overview Stats Dashboard
+
+### ✅ Owner Features
+- Owner Dashboard & Property Management
+- Owner Resolution with Proof Images
+- Add/Edit Property (Dual Mode)
+- Role-Based Accommodation Detail View
+
+### ✅ Search & Discovery
+- Accommodation Search & Trust Score Ratings
+- Interactive Map with OpenStreetMap
+- Location Search (Nominatim Geocoding)
+- GPS-based Nearby Accommodation Discovery
+- Radius-based Filtering (2-50 km)
+- Embedded Maps on Accommodation Detail
+
+### ✅ Engagement
+- Dynamic Trust Score Algorithm (0-100)
+- Upvote & Confirm Reports ("I experienced this too")
+
+### ✅ Profile System
+- User Profile Page (Edit Name, Change Password, Stats)
+- Role-Based Profile UI (Different stats for Student vs Owner)
+- Owner Quick Actions (Dashboard, Add Property links)
+- Notification Preferences
+
+### ✅ UI/UX
+- Image Error Handling (ImageWithFallback component)
+- Error Boundaries for Graceful Crash Recovery
+- Error States with Retry Buttons
+- Footer only on Home Page
+- Conditional UI based on User Role
+
+### ✅ Security
+- Input Validation & Regex Injection Prevention
+- ObjectId Validation on All Routes
+- Rate Limiting
+- CORS Configuration
+
+### ✅ Performance
+- React.memo & useCallback optimizations
+- Pagination
+- .lean() for MongoDB queries
+- Database Indexing
 
 ---
 
@@ -282,20 +371,20 @@ This platform introduces **verified, accountable, student-driven safety intellig
 ### Reports
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
-| POST | /api/reports | Submit new report (linked to accommodation) | Yes |
+| POST | /api/reports | Submit new report | Yes |
 | GET | /api/reports | Get all reports | No |
-| GET | /api/reports/my-reports | Get user reports (paginated, with resolution) | Yes |
+| GET | /api/reports/my-reports | Get user reports (paginated) | Yes |
 | PUT | /api/reports/:id | Update report | Yes |
 | DELETE | /api/reports/:id | Delete report | Yes |
-| POST | /api/reports/:id/upvote | Toggle upvote on report | Yes |
-| PUT | /api/reports/:id/verify | Student verifies/disputes resolution | Yes |
+| POST | /api/reports/:id/upvote | Toggle upvote | Yes |
+| PUT | /api/reports/:id/verify | Verify/dispute resolution | Yes |
 | GET | /api/reports/:id/resolution | Get resolution details | Yes |
 
 ### Accommodations
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
 | GET | /api/accommodations | List all (with search/filter) | No |
-| GET | /api/accommodations/dropdown | Minimal list for report form | No |
+| GET | /api/accommodations/dropdown | Minimal list for forms | No |
 | GET | /api/accommodations/with-location | Map data with coordinates | No |
 | GET | /api/accommodations/:id | Single accommodation with reports | No |
 
@@ -305,6 +394,7 @@ This platform introduces **verified, accountable, student-driven safety intellig
 | GET | /api/profile | Get profile with stats | Yes |
 | PUT | /api/profile | Update display name | Yes |
 | PUT | /api/profile/password | Change password | Yes |
+| PUT | /api/profile/notifications | Update notification prefs | Yes |
 
 ### Admin
 | Method | Endpoint | Description | Auth |
@@ -410,20 +500,51 @@ Start frontend:
 ## 🗺️ Map Feature - How It Works
 
     Parent/Student opens map
-         ↓
+             ↓
     Searches "Nampally, Hyderabad"
-         ↓
+             ↓
     Map flies to location with markers
-         ↓
+             ↓
     🟢 Safe  🟡 Caution  🔴 Unsafe
-         ↓
+             ↓
     Selects radius (2-50 km)
-         ↓
+             ↓
     Sees nearby accommodations sorted by distance
-         ↓
+             ↓
     Clicks accommodation → Views trust score & reports
-         ↓
+             ↓
     Makes informed decision ✅
+
+---
+
+## 👥 Role-Based Features
+
+### 🎓 Student Experience
+| Feature | Description |
+|---------|-------------|
+| Dashboard | View reports, safety alerts, nearby accommodations |
+| Report Issues | File safety reports with evidence |
+| My Reports | Track report status, verify resolutions |
+| Profile | Blue theme, reports filed stats, confirmations received |
+| Accommodation View | See contact info, report issues, "Living Here?" card |
+
+### 🏢 Owner Experience
+| Feature | Description |
+|---------|-------------|
+| Dashboard | Manage properties, view reports, resolve issues |
+| Add Property | Register new accommodations with map location |
+| Edit Property | Update existing property details |
+| Resolve Reports | Submit proof of resolution directly from accommodation page |
+| Profile | Emerald theme, properties managed, trust score, resolution rate |
+| Accommodation View | See analytics, edit buttons, resolve buttons |
+
+### 🛡️ Admin Experience
+| Feature | Description |
+|---------|-------------|
+| Dashboard | Overview stats, moderation queue |
+| Approve/Reject | Review and moderate reports |
+| Reopen Reports | Allow owners to retry disputed resolutions |
+| User Management | Ban/unban users |
 
 ---
 
@@ -453,6 +574,8 @@ Start frontend:
 - [ ] Real-time Updates (WebSocket)
 - [ ] Mobile App (React Native)
 - [ ] University Partnership Portal
+- [ ] Multi-language Support
+- [ ] Dark Mode
 
 ---
 
@@ -465,6 +588,33 @@ Start frontend:
 | 🏢 Good Hostels | Build genuine reputation with authentic reviews |
 | 🏛️ Society | Improve overall student housing standards |
 | 🏫 Universities | Partner for student welfare initiatives |
+
+---
+
+## 📝 Recent Updates (v2.0.0)
+
+### 🔧 Bug Fixes
+- ✅ Fixed "Go to Dashboard" button redirecting wrong role to wrong dashboard
+- ✅ Fixed AccommodationDetail page showing same UI for owner and student
+- ✅ Fixed blank page when viewing accommodation details (missing component import)
+- ✅ Fixed AddProperty page not supporting edit mode
+- ✅ Fixed Footer showing on all pages instead of just Home
+- ✅ Fixed Profile page showing same UI for owner and student
+
+### 🆕 New Features
+- ✅ Role-based AccommodationDetail view (Owner sees edit/resolve buttons)
+- ✅ In-page resolution modal for owners
+- ✅ Edit Property mode (pre-filled form with existing data)
+- ✅ Role-based Profile UI (different stats for Student vs Owner)
+- ✅ Owner Quick Actions in profile
+- ✅ Embedded OpenStreetMap on accommodation detail
+- ✅ Conditional footer rendering
+
+### 🎨 UI Improvements
+- ✅ Owner profile uses emerald/teal theme
+- ✅ Student profile uses blue/indigo theme
+- ✅ "Your Property" badge for owners on accommodation detail
+- ✅ Role-specific notification messages
 
 ---
 
@@ -484,6 +634,12 @@ Contributions are welcome! Please follow these steps:
 
 **Praneeth M**
 Full Stack Developer | MERN Stack | Problem Solver
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
 
 ---
 
