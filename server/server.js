@@ -18,6 +18,17 @@ const { generateOTP, sendOTPEmail } = require('./utils/emailService');
 const { cloudinary, upload } = require('./config/cloudinary');
 const { updateAccommodationScore } = require('./utils/trustScore');
 
+// ✅ AI Verification Import
+let verifyReportImage;
+try {
+  const aiModule = require('./utils/aiVerification');
+  verifyReportImage = aiModule.verifyReportImage;
+  console.log('[AI Verification] Module loaded successfully');
+} catch (err) {
+  console.warn('[AI Verification] Module not loaded:', err.message);
+  verifyReportImage = null;
+}
+
 function escapeRegex(string) {
   return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -48,7 +59,7 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
-// Rate limiting — prevent brute force attacks
+// Rate limiting
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 20,
@@ -133,7 +144,6 @@ app.get('/api/reports/my-reports', authMiddleware, async (req, res) => {
     let page = parseInt(req.query.page) || 1;
     let limit = parseInt(req.query.limit) || 10;
     
-    // Validate pagination
     if (page < 1) page = 1;
     if (limit < 1) limit = 10;
     if (limit > 100) limit = 100;
@@ -141,7 +151,7 @@ app.get('/api/reports/my-reports', authMiddleware, async (req, res) => {
     const skip = (page - 1) * limit;
 
     const userReports = await Report.find({ user: req.user.id })
-      .select('accommodationName accommodation issueType description images createdAt status upvotes upvotedBy user resolution verification')
+      .select('accommodationName accommodation issueType description images createdAt status upvotes upvotedBy user resolution verification aiVerification')
       .populate('accommodation', 'name address city')
       .populate('resolution.resolvedBy', 'name')
       .sort({ createdAt: -1 })
@@ -188,7 +198,7 @@ app.get('/api/reports', async (req, res) => {
   }
 });
 
-// POST new report — NOW LINKS TO REGISTERED ACCOMMODATION
+// ✅ POST new report — WITH AI VERIFICATION
 app.post('/api/reports', authMiddleware, async (req, res) => {
   try {
     const { accommodation, accommodationName, issueType, description, images } = req.body;
@@ -221,7 +231,7 @@ app.post('/api/reports', authMiddleware, async (req, res) => {
       validatedImages = images.filter(img => img && img.url && img.publicId);
     }
 
-    // Resolve accommodation: if ID provided, validate it exists
+    // Resolve accommodation
     let accommodationId = null;
     let resolvedAccommodationName = accommodationName || '';
 
@@ -237,26 +247,101 @@ app.post('/api/reports', authMiddleware, async (req, res) => {
       resolvedAccommodationName = accommodationDoc.name;
     }
 
+    // ✅ AI VERIFICATION — Run if images are provided and module is available
+    let aiVerificationData = null;
+    let autoStatus = 'pending';
+
+    if (verifyReportImage && validatedImages.length > 0 && validatedImages[0].url) {
+      try {
+        console.log('[Report Submission] Running AI verification...');
+        console.log('[Report Submission] Image URL:', validatedImages[0].url);
+        console.log('[Report Submission] Issue Type:', issueType);
+        
+        const aiResult = await verifyReportImage(validatedImages[0].url, issueType);
+        
+        console.log('[Report Submission] AI Verdict:', aiResult.verdict);
+        console.log('[Report Submission] AI Confidence:', aiResult.confidence);
+
+        // Store AI verification data
+        aiVerificationData = {
+          verdict: aiResult.verdict,
+          severity: aiResult.severity,
+          confidence: aiResult.confidence,
+          summary: aiResult.summary,
+          recommendAdminReview: aiResult.recommendAdminReview || false,
+          details: aiResult.details || null,
+          timestamp: new Date()
+        };
+
+        // ✅ Auto-reject if AI says image is clearly irrelevant with high confidence
+        if (aiResult.verdict === 'REJECTED' && aiResult.confidence >= 0.7) {
+          autoStatus = 'rejected';
+          console.log('[Report Submission] Auto-rejected by AI');
+        }
+
+        // ✅ Mark for admin review if AI is unsure or detects high severity
+        if (aiResult.verdict === 'NEEDS_REVIEW' || aiResult.severity === 'high') {
+          aiVerificationData.recommendAdminReview = true;
+        }
+
+      } catch (aiError) {
+        console.error('[Report Submission] AI Verification Error:', aiError.message);
+        // Don't block report submission if AI fails
+        aiVerificationData = {
+          verdict: 'NEEDS_REVIEW',
+          severity: 'unknown',
+          confidence: 0,
+          summary: 'AI verification failed - manual review required',
+          recommendAdminReview: true,
+          details: { error: aiError.message },
+          timestamp: new Date()
+        };
+      }
+    } else if (!verifyReportImage) {
+      console.log('[Report Submission] AI verification not available, skipping...');
+    } else {
+      console.log('[Report Submission] No images provided, skipping AI verification');
+    }
+
+    // Create report
     const newReport = new Report({
       accommodationName: resolvedAccommodationName,
       accommodation: accommodationId,
       issueType,
       description,
       images: validatedImages,
-      user: req.user.id
+      user: req.user.id,
+      status: autoStatus,
+      aiVerification: aiVerificationData
     });
 
     const saved = await newReport.save();
 
-    // Update trust score if linked to accommodation
-    if (accommodationId) {
+    // Update trust score if linked to accommodation and not rejected
+    if (accommodationId && autoStatus !== 'rejected') {
       await updateAccommodationScore(Accommodation, Report, accommodationId);
+    }
+
+    // ✅ Build response message
+    let responseMessage = 'Report submitted successfully';
+    if (autoStatus === 'rejected') {
+      responseMessage = 'Report submitted but flagged by AI as potentially irrelevant. Admin will review.';
+    } else if (aiVerificationData?.recommendAdminReview) {
+      responseMessage = 'Report submitted successfully. Marked for admin review.';
+    } else if (aiVerificationData?.verdict === 'VERIFIED') {
+      responseMessage = 'Report submitted and verified by AI. Awaiting final approval.';
     }
 
     res.status(201).json({
       success: true,
-      message: 'Report submitted successfully',
-      data: saved
+      message: responseMessage,
+      data: saved,
+      aiVerification: aiVerificationData ? {
+        verdict: aiVerificationData.verdict,
+        severity: aiVerificationData.severity,
+        confidence: aiVerificationData.confidence,
+        summary: aiVerificationData.summary
+      } : null
     });
   } catch (error) {
     console.error('SAVE ERROR:', error);
@@ -306,6 +391,29 @@ app.put('/api/reports/:id', authMiddleware, async (req, res) => {
     if (issueType) report.issueType = issueType;
     if (description) report.description = description;
     if (images !== undefined) report.images = images;
+
+    // ✅ Re-run AI verification if images changed
+    if (images !== undefined && verifyReportImage && images.length > 0 && images[0].url) {
+      try {
+        console.log('[Report Update] Re-running AI verification...');
+        const aiResult = await verifyReportImage(images[0].url, report.issueType);
+        
+        report.aiVerification = {
+          verdict: aiResult.verdict,
+          severity: aiResult.severity,
+          confidence: aiResult.confidence,
+          summary: aiResult.summary,
+          recommendAdminReview: aiResult.recommendAdminReview || false,
+          details: aiResult.details || null,
+          timestamp: new Date()
+        };
+
+        // Reset to pending for re-review
+        report.status = 'pending';
+      } catch (aiError) {
+        console.error('[Report Update] AI Verification Error:', aiError.message);
+      }
+    }
 
     const updated = await report.save();
 
@@ -491,6 +599,47 @@ app.get('/api/reports/:id/resolution', authMiddleware, async (req, res) => {
   }
 });
 
+// ============ AI VERIFICATION TEST ENDPOINT ============
+app.post('/api/test-ai-verification', authMiddleware, async (req, res) => {
+  try {
+    const { imageUrl, issueType } = req.body;
+
+    if (!imageUrl || !issueType) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'imageUrl and issueType are required' 
+      });
+    }
+
+    if (!verifyReportImage) {
+      return res.status(503).json({ 
+        success: false, 
+        message: 'AI verification module not available. Check API keys in .env' 
+      });
+    }
+
+    console.log('[AI Test] Starting verification...');
+    console.log('[AI Test] Image URL:', imageUrl);
+    console.log('[AI Test] Issue Type:', issueType);
+
+    const result = await verifyReportImage(imageUrl, issueType);
+
+    console.log('[AI Test] Result:', result.verdict);
+
+    res.json({
+      success: true,
+      data: result
+    });
+  } catch (error) {
+    console.error('AI Test Error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'AI verification test failed',
+      error: error.message
+    });
+  }
+});
+
 // ============ ADMIN ROUTES ============
 
 app.get('/api/admin/stats', authMiddleware, adminMiddleware, async (req, res) => {
@@ -499,8 +648,16 @@ app.get('/api/admin/stats', authMiddleware, adminMiddleware, async (req, res) =>
     const pendingReports = await Report.countDocuments({ status: 'pending' });
     const approvedReports = await Report.countDocuments({ status: 'approved' });
     const rejectedReports = await Report.countDocuments({ status: 'rejected' });
+    const resolvedReports = await Report.countDocuments({ status: 'resolved' });
+    const verifiedReports = await Report.countDocuments({ status: 'verified' });
+    const disputedReports = await Report.countDocuments({ status: 'disputed' });
     const totalUsers = await User.countDocuments({ role: 'student' });
     const bannedUsers = await User.countDocuments({ isBanned: true });
+
+    // ✅ AI Verification stats
+    const aiVerifiedReports = await Report.countDocuments({ 'aiVerification.verdict': 'VERIFIED' });
+    const aiRejectedReports = await Report.countDocuments({ 'aiVerification.verdict': 'REJECTED' });
+    const aiNeedsReviewReports = await Report.countDocuments({ 'aiVerification.recommendAdminReview': true });
 
     const issueStats = await Report.aggregate([
       { $group: { _id: '$issueType', count: { $sum: 1 } } },
@@ -514,9 +671,18 @@ app.get('/api/admin/stats', authMiddleware, adminMiddleware, async (req, res) =>
         pendingReports,
         approvedReports,
         rejectedReports,
+        resolvedReports,
+        verifiedReports,
+        disputedReports,
         totalUsers,
         bannedUsers,
-        issueStats
+        issueStats,
+        // ✅ AI stats
+        aiStats: {
+          verified: aiVerifiedReports,
+          rejected: aiRejectedReports,
+          needsReview: aiNeedsReviewReports
+        }
       }
     });
   } catch (error) {
@@ -526,8 +692,21 @@ app.get('/api/admin/stats', authMiddleware, adminMiddleware, async (req, res) =>
 
 app.get('/api/admin/reports', authMiddleware, adminMiddleware, async (req, res) => {
   try {
-    const reports = await Report.find()
-      .populate('user', 'name email')
+    const { aiFilter } = req.query;
+
+    let query = {};
+
+    // ✅ Filter by AI recommendation
+    if (aiFilter === 'needs-review') {
+      query['aiVerification.recommendAdminReview'] = true;
+    } else if (aiFilter === 'ai-verified') {
+      query['aiVerification.verdict'] = 'VERIFIED';
+    } else if (aiFilter === 'ai-rejected') {
+      query['aiVerification.verdict'] = 'REJECTED';
+    }
+
+    const reports = await Report.find(query)
+      .populate('user', 'name email isCollegeVerified collegeName')
       .populate('accommodation', 'name address city')
       .sort({ createdAt: -1 })
       .lean();
@@ -791,7 +970,6 @@ app.get('/api/owner/stats', authMiddleware, ownerMiddleware, async (req, res) =>
     const occupiedRooms = accommodations.reduce((sum, a) => sum + a.occupiedRooms, 0);
     const occupancyRate = totalRooms > 0 ? Math.round((occupiedRooms / totalRooms) * 100) : 0;
 
-    // Use accommodation IDs for accurate report counting
     const accommodationIds = accommodations.map(a => a._id);
     const totalReports = await Report.countDocuments({
       accommodation: { $in: accommodationIds }
@@ -830,7 +1008,6 @@ app.post('/api/owner/accommodations', authMiddleware, ownerMiddleware, async (re
   try {
     const { name, address, city, description, amenities, totalRooms, pricePerMonth, contactPhone, latitude, longitude } = req.body;
 
-    // Parse latitude and longitude as numbers
     const parsedLat = latitude ? parseFloat(latitude) : null;
     const parsedLng = longitude ? parseFloat(longitude) : null;
     const validLat = parsedLat !== null && !isNaN(parsedLat) ? parsedLat : null;
@@ -878,7 +1055,6 @@ app.put('/api/owner/accommodations/:id', authMiddleware, ownerMiddleware, async 
       return res.status(403).json({ success: false, message: 'Not authorized' });
     }
 
-    // Parse lat/lng if provided in update
     if (req.body.latitude !== undefined || req.body.longitude !== undefined) {
       const parsedLat = req.body.latitude ? parseFloat(req.body.latitude) : null;
       const parsedLng = req.body.longitude ? parseFloat(req.body.longitude) : null;
@@ -924,7 +1100,6 @@ app.delete('/api/owner/accommodations/:id', authMiddleware, ownerMiddleware, asy
   }
 });
 
-// Get reports on owner's accommodations — USES ACCOMMODATION IDs
 app.get('/api/owner/reports', authMiddleware, ownerMiddleware, async (req, res) => {
   try {
     const accommodations = await Accommodation.find({ owner: req.user.id }).lean();
@@ -936,7 +1111,7 @@ app.get('/api/owner/reports', authMiddleware, ownerMiddleware, async (req, res) 
         { accommodationName: { $in: accommodations.map(a => a.name) } }
       ]
     })
-    .populate('user', 'name email')
+    .populate('user', 'name email isCollegeVerified collegeName')
     .populate('accommodation', 'name address city')
     .sort({ createdAt: -1 })
     .lean();
@@ -969,7 +1144,6 @@ app.put('/api/owner/reports/:id/resolve', authMiddleware, ownerMiddleware, async
       return res.status(404).json({ success: false, message: 'Report not found' });
     }
 
-    // Verify ownership
     let accommodation = null;
     if (report.accommodation) {
       accommodation = await Accommodation.findOne({ _id: report.accommodation, owner: req.user.id });
@@ -1017,7 +1191,6 @@ app.post('/api/owner/counter-report', authMiddleware, ownerMiddleware, async (re
       return res.status(404).json({ success: false, message: 'Report not found' });
     }
 
-    // Check by accommodation ID first, then by name
     let accommodation = null;
     if (originalReport.accommodation) {
       accommodation = await Accommodation.findOne({
@@ -1111,7 +1284,6 @@ app.put('/api/owner/accommodations/:id/occupancy', authMiddleware, ownerMiddlewa
 });
 
 // ============ PROFILE ROUTES ============
-// ============ PROFILE ROUTES ============
 
 app.get('/api/profile', authMiddleware, async (req, res) => {
   try {
@@ -1121,11 +1293,9 @@ app.get('/api/profile', authMiddleware, async (req, res) => {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
-    // ✅ ROLE-BASED STATS
     let stats = {};
 
     if (user.role === 'student') {
-      // Student stats
       const totalReports = await Report.countDocuments({ user: req.user.id });
       
       const upvoteResult = await Report.aggregate([
@@ -1146,7 +1316,6 @@ app.get('/api/profile', authMiddleware, async (req, res) => {
         resolvedReports
       };
     } else if (user.role === 'owner') {
-      // Owner stats
       const accommodations = await Accommodation.find({ owner: req.user.id }).lean();
       const totalProperties = accommodations.length;
       
@@ -1193,7 +1362,6 @@ app.put('/api/profile', authMiddleware, async (req, res) => {
   try {
     const { name, profilePhoto } = req.body;
 
-    // ✅ Handle photo update
     if (profilePhoto !== undefined) {
       const user = await User.findByIdAndUpdate(
         req.user.id,
@@ -1204,7 +1372,6 @@ app.put('/api/profile', authMiddleware, async (req, res) => {
       return res.json({ success: true, data: user });
     }
 
-    // Handle name update
     if (!name || !name.trim()) {
       return res.status(400).json({ success: false, message: 'Name is required' });
     }
@@ -1416,7 +1583,7 @@ app.post('/api/otp/reset-password', async (req, res) => {
     const { email, otp, newPassword } = req.body;
 
     if (!email || !otp || !newPassword) {
-      return res.status(400).json({ success: false, message: 'Emaiil, OTP, and new password are required' });
+      return res.status(400).json({ success: false, message: 'Email, OTP, and new password are required' });
     }
 
     if (newPassword.length < 6) {
@@ -1457,14 +1624,11 @@ app.post('/api/otp/reset-password', async (req, res) => {
   }
 });
 
-// Apply rate limiting to OTP routes (prevent spam)
 app.use('/api/otp/send-verification', authLimiter);
 app.use('/api/otp/forgot-password', authLimiter);
 
 // ============ ACCOMMODATION ROUTES ============
-// IMPORTANT: Route order matters! Specific routes BEFORE parameterized routes
 
-// 1. General list (no parameters)
 app.get('/api/accommodations', async (req, res) => {
   try {
     const { search, city, type } = req.query;
@@ -1499,7 +1663,6 @@ app.get('/api/accommodations', async (req, res) => {
   }
 });
 
-// 2. Dropdown list for report form (minimal data, specific route)
 app.get('/api/accommodations/dropdown', async (req, res) => {
   try {
     const accommodations = await Accommodation.find({})
@@ -1514,12 +1677,10 @@ app.get('/api/accommodations/dropdown', async (req, res) => {
   }
 });
 
-// 3. Accommodations with location data for map (specific route)
 app.get('/api/accommodations/with-location', async (req, res) => {
   try {
     console.log('=== FETCHING ACCOMMODATIONS WITH LOCATION ===');
 
-    // Get ALL accommodations first
     const allAccommodations = await Accommodation.find({})
       .select('_id name address city latitude longitude trustScore trustScoreLabel totalReports type')
       .lean();
@@ -1530,7 +1691,6 @@ app.get('/api/accommodations/with-location', async (req, res) => {
       return res.json({ success: true, data: [], message: 'No accommodations registered yet' });
     }
 
-    // Filter those with valid numeric coordinates
     const withValidLocation = allAccommodations.filter(acc => {
       const lat = parseFloat(acc.latitude);
       const lng = parseFloat(acc.longitude);
@@ -1539,14 +1699,12 @@ app.get('/api/accommodations/with-location', async (req, res) => {
 
     console.log('With valid location:', withValidLocation.length);
 
-    // Normalize coordinates to ensure they are numbers
     const normalizedData = withValidLocation.map(acc => ({
       ...acc,
       latitude: parseFloat(acc.latitude),
       longitude: parseFloat(acc.longitude)
     }));
 
-    // If none have location, return all with default coordinates
     if (normalizedData.length === 0) {
       const withDefaultLocation = allAccommodations.map(acc => ({
         ...acc,
@@ -1565,7 +1723,6 @@ app.get('/api/accommodations/with-location', async (req, res) => {
   }
 });
 
-// 4. Single accommodation by ID (parameterized — MUST BE LAST)
 app.get('/api/accommodations/:id', async (req, res) => {
   try {
     const accommodation = await Accommodation.findById(req.params.id).lean();
@@ -1573,7 +1730,6 @@ app.get('/api/accommodations/:id', async (req, res) => {
       return res.status(404).json({ success: false, message: 'Accommodation not found' });
     }
 
-    // Fetch approved reports for this accommodation
     const reports = await Report.find({
       $or: [
         { accommodation: req.params.id },
@@ -1581,7 +1737,7 @@ app.get('/api/accommodations/:id', async (req, res) => {
       ],
       status: 'approved'
     })
-    .populate('user', 'name')
+    .populate('user', 'name isCollegeVerified collegeName')
     .sort({ createdAt: -1 })
     .lean();
 
@@ -1598,7 +1754,6 @@ app.get('/api/accommodations/:id', async (req, res) => {
   }
 });
 
-// Recalculate trust score
 app.post('/api/accommodations/:id/recalculate-score', authMiddleware, async (req, res) => {
   try {
     await updateAccommodationScore(Accommodation, Report, req.params.id);
@@ -1610,7 +1765,7 @@ app.post('/api/accommodations/:id/recalculate-score', authMiddleware, async (req
   }
 });
 
-// 404 handler for undefined routes
+// 404 handler
 app.use((req, res) => {
   res.status(404).json({
     success: false,
@@ -1654,4 +1809,3 @@ mongoose.connect(process.env.MONGO_URI)
     });
   })
   .catch(err => console.error("MongoDB connection error:", err));
-
