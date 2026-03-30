@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { FiUserPlus, FiMail, FiLock, FiUser, FiShield, FiCheckCircle, FiArrowRight } from 'react-icons/fi';
+import { FiUserPlus, FiMail, FiLock, FiUser, FiShield, FiCheckCircle, FiArrowRight, FiInfo } from 'react-icons/fi';
 
 export const Register: React.FC = () => {
   const [name, setName] = useState('');
@@ -25,6 +25,16 @@ export const Register: React.FC = () => {
     if (/[^A-Za-z0-9]/.test(password)) strength += 1;
     setPasswordStrength(strength);
   }, [password]);
+
+  // ✅ Check if email is college email
+  const isCollegeEmail = (email: string) => {
+    const lowerEmail = email.toLowerCase();
+    return lowerEmail.endsWith('.ac.in') || 
+           lowerEmail.endsWith('.edu.in') || 
+           lowerEmail.endsWith('.edu') ||
+           lowerEmail.endsWith('.ernet.in') ||
+           lowerEmail.endsWith('.res.in');
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -73,7 +83,7 @@ export const Register: React.FC = () => {
           <div className="relative z-10">
             <Link to="/" className="flex items-center space-x-2 text-2xl font-bold mb-12">
               <FiShield className="h-8 w-8 text-yellow-400" />
-              <span>SafetyFirst</span>
+              <span>SafeStay</span>
             </Link>
             
             <h2 className="text-4xl font-extrabold mb-8 leading-tight">
@@ -84,7 +94,7 @@ export const Register: React.FC = () => {
               {[
                 { title: "Report issues anonymously", desc: "Your identity is protected while your voice is heard." },
                 { title: "Access verified safety data", desc: "See real reports from real residents before you move." },
-                { title: "Get email notifications", desc: "Stay updated on safety alerts in your area." }
+                { title: "Get verified student badge", desc: "Use your college email to build trust in your reports." }
               ].map((benefit, i) => (
                 <div key={i} className="flex space-x-4">
                   <div className="mt-1">
@@ -168,6 +178,43 @@ export const Register: React.FC = () => {
                   />
                 </div>
               </div>
+
+              {/* ✅ COLLEGE EMAIL SUGGESTION */}
+              {email && !email.includes('@') && (
+                <div className="col-span-full p-4 bg-blue-50 border border-blue-200 rounded-xl flex items-start gap-3 animate-in fade-in slide-in-from-top-2 duration-300">
+                  <FiInfo className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-bold text-blue-900">💡 Pro Tip: Use Your College Email</p>
+                    <p className="text-xs text-blue-700 mt-1">
+                      Register with your college email (e.g., yourname@vce.ac.in) to get a <strong>Verified Student</strong> badge and build more trust in your reports!
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {email && email.includes('@') && isCollegeEmail(email) && (
+                <div className="col-span-full p-4 bg-green-50 border border-green-200 rounded-xl flex items-start gap-3 animate-in fade-in slide-in-from-top-2 duration-300">
+                  <FiCheckCircle className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-bold text-green-900">✅ College Email Detected!</p>
+                    <p className="text-xs text-green-700 mt-1">
+                      You'll receive a <strong className="text-green-800">Verified Student</strong> badge after registration. This helps build trust in your safety reports!
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {email && email.includes('@') && !isCollegeEmail(email) && email.split('@')[1] && (
+                <div className="col-span-full p-4 bg-yellow-50 border border-yellow-200 rounded-xl flex items-start gap-3 animate-in fade-in slide-in-from-top-2 duration-300">
+                  <FiInfo className="h-5 w-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-bold text-yellow-900">ℹ️ Regular Email Detected</p>
+                    <p className="text-xs text-yellow-700 mt-1">
+                      You can still register, but consider using your college email (ends with .ac.in or .edu) to get a <strong>Verified Student</strong> badge!
+                    </p>
+                  </div>
+                </div>
+              )}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>

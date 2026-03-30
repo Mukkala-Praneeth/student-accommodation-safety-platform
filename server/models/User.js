@@ -31,6 +31,20 @@ const userSchema = new mongoose.Schema({
   isVerified: {
     type: Boolean,
     default: false
+  },
+  // ✅ ADDED: College verification fields
+  isCollegeVerified: {
+    type: Boolean,
+    default: false
+  },
+  collegeName: {
+    type: String,
+    default: null
+  },
+  // ✅ ADDED: Profile photo
+  profilePhoto: {
+    type: String,
+    default: null
   }
 }, { timestamps: true });
 

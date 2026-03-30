@@ -1111,6 +1111,7 @@ app.put('/api/owner/accommodations/:id/occupancy', authMiddleware, ownerMiddlewa
 });
 
 // ============ PROFILE ROUTES ============
+// ============ PROFILE ROUTES ============
 
 app.get('/api/profile', authMiddleware, async (req, res) => {
   try {
@@ -1120,21 +1121,66 @@ app.get('/api/profile', authMiddleware, async (req, res) => {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
-    const totalReports = await Report.countDocuments({ user: req.user.id });
+    // ✅ ROLE-BASED STATS
+    let stats = {};
 
-    const upvoteResult = await Report.aggregate([
-      { $match: { user: new mongoose.Types.ObjectId(req.user.id) } },
-      { $group: { _id: null, totalUpvotes: { $sum: '$upvotes' } } }
-    ]);
+    if (user.role === 'student') {
+      // Student stats
+      const totalReports = await Report.countDocuments({ user: req.user.id });
+      
+      const upvoteResult = await Report.aggregate([
+        { $match: { user: new mongoose.Types.ObjectId(req.user.id) } },
+        { $group: { _id: null, totalUpvotes: { $sum: '$upvotes' } } }
+      ]);
+      
+      const totalUpvotes = upvoteResult.length > 0 ? upvoteResult[0].totalUpvotes : 0;
+      
+      const resolvedReports = await Report.countDocuments({ 
+        user: req.user.id, 
+        status: 'verified' 
+      });
 
-    const totalUpvotes = upvoteResult.length > 0 ? upvoteResult[0].totalUpvotes : 0;
+      stats = {
+        totalReports,
+        totalUpvotes,
+        resolvedReports
+      };
+    } else if (user.role === 'owner') {
+      // Owner stats
+      const accommodations = await Accommodation.find({ owner: req.user.id }).lean();
+      const totalProperties = accommodations.length;
+      
+      const avgTrustScore = accommodations.length > 0
+        ? Math.round(accommodations.reduce((sum, a) => sum + (a.trustScore || 0), 0) / accommodations.length)
+        : 0;
+      
+      const accommodationIds = accommodations.map(a => a._id);
+      const totalReportsOnProperties = await Report.countDocuments({
+        accommodation: { $in: accommodationIds }
+      });
+      
+      const resolvedCount = await Report.countDocuments({
+        accommodation: { $in: accommodationIds },
+        status: { $in: ['resolved', 'verified'] }
+      });
+      
+      const resolutionRate = totalReportsOnProperties > 0
+        ? Math.round((resolvedCount / totalReportsOnProperties) * 100)
+        : 0;
+
+      stats = {
+        totalProperties,
+        avgTrustScore,
+        totalReportsOnProperties,
+        resolutionRate
+      };
+    }
 
     res.json({
       success: true,
       data: {
         ...user,
-        totalReports,
-        totalUpvotes
+        ...stats
       }
     });
   } catch (error) {
@@ -1145,8 +1191,20 @@ app.get('/api/profile', authMiddleware, async (req, res) => {
 
 app.put('/api/profile', authMiddleware, async (req, res) => {
   try {
-    const { name } = req.body;
+    const { name, profilePhoto } = req.body;
 
+    // ✅ Handle photo update
+    if (profilePhoto !== undefined) {
+      const user = await User.findByIdAndUpdate(
+        req.user.id,
+        { profilePhoto },
+        { new: true }
+      ).select('-password');
+      
+      return res.json({ success: true, data: user });
+    }
+
+    // Handle name update
     if (!name || !name.trim()) {
       return res.status(400).json({ success: false, message: 'Name is required' });
     }
@@ -1205,6 +1263,27 @@ app.put('/api/profile/password', authMiddleware, async (req, res) => {
   } catch (error) {
     console.error('PASSWORD CHANGE ERROR:', error.message);
     res.status(500).json({ success: false, message: 'Error changing password' });
+  }
+});
+
+app.put('/api/profile/notifications', authMiddleware, async (req, res) => {
+  try {
+    const { notificationPrefs } = req.body;
+
+    if (!notificationPrefs || typeof notificationPrefs !== 'object') {
+      return res.status(400).json({ success: false, message: 'Invalid notification preferences' });
+    }
+
+    const user = await User.findByIdAndUpdate(
+      req.user.id,
+      { notificationPrefs },
+      { new: true }
+    ).select('-password');
+
+    res.json({ success: true, message: 'Notification preferences updated', data: user });
+  } catch (error) {
+    console.error('NOTIFICATION PREFS ERROR:', error.message);
+    res.status(500).json({ success: false, message: 'Error updating preferences' });
   }
 });
 
