@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 import { 
   FiUpload, FiAlertTriangle, FiHome, FiDroplet, FiUser, FiSearch, 
-  FiShield, FiCamera, FiCheckCircle, FiArrowRight, FiArrowLeft, FiInfo
+  FiShield, FiCamera, FiCheckCircle, FiArrowRight, FiArrowLeft, FiInfo,
+  FiMail, FiX
 } from 'react-icons/fi';
 import { ImageUpload } from '../components/ImageUpload';
 
@@ -22,6 +24,7 @@ interface Accommodation {
 export const ReportIncident: React.FC = () => {
   const API = import.meta.env.VITE_API_URL || 'http://localhost:5000';
   const navigate = useNavigate();
+  const { user, token } = useAuth();
   
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState({
@@ -36,10 +39,24 @@ export const ReportIncident: React.FC = () => {
   const [uploadedImages, setUploadedImages] = useState<Image[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
+  const [submitError, setSubmitError] = useState('');
+
+  // ✅ Check if user is verified
+  const isVerified = user?.isCollegeVerified || (user as any)?.isVerified;
 
   useEffect(() => {
+    if (!user || !token) {
+      navigate('/login');
+      return;
+    }
+
+    if (user.role !== 'student') {
+      navigate('/');
+      return;
+    }
+
     fetchAccommodations();
-  }, []);
+  }, [user, token, navigate]);
 
   const fetchAccommodations = async () => {
     try {
@@ -75,21 +92,15 @@ export const ReportIncident: React.FC = () => {
       return;
     }
 
-    const token = localStorage.getItem("token");
-    if (!token) {
-      alert("Please login first");
-      navigate("/login");
-      return;
-    }
-
     setIsSubmitting(true);
+    setSubmitError('');
     
     try {
       const res = await fetch(`${API}/api/reports`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": "Bearer " + token
+          "Authorization": `Bearer ${token}`
         },
         body: JSON.stringify({ 
           accommodation: formData.accommodation,
@@ -108,10 +119,19 @@ export const ReportIncident: React.FC = () => {
           navigate('/my-reports');
         }, 2500);
       } else {
-        alert(data.message || "Failed to submit report");
+        // ✅ Handle verification required error
+        if (data.requiresVerification) {
+          setSubmitError(data.message);
+          // Optionally redirect to verification page after 3 seconds
+          setTimeout(() => {
+            navigate('/verify-email');
+          }, 3000);
+        } else {
+          setSubmitError(data.message || "Failed to submit report");
+        }
       }
     } catch (error) {
-      alert("Error submitting report");
+      setSubmitError("Network error. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
@@ -131,7 +151,86 @@ export const ReportIncident: React.FC = () => {
     acc.city?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const selectedAccName = accommodations.find(a => a._id === formData.accommodation)?.name || "Selected Property";
+  // ✅ NOT VERIFIED - Show verification required screen
+  if (!isVerified) {
+    return (
+      <div className="min-h-screen bg-gray-50 py-12 px-4">
+        <div className="max-w-2xl mx-auto">
+          <div className="bg-white rounded-3xl shadow-xl p-8 sm:p-12 text-center">
+            <div className="w-20 h-20 bg-yellow-50 rounded-full flex items-center justify-center mx-auto mb-6">
+              <FiShield className="text-yellow-600 text-3xl" />
+            </div>
+            
+            <h1 className="text-3xl font-black text-slate-900 mb-4">
+              Verification Required
+            </h1>
+            
+            <p className="text-slate-600 mb-8 max-w-md mx-auto">
+              To ensure authentic reviews and protect our community, only <strong>verified students</strong> can submit safety reports.
+            </p>
+
+            <div className="bg-yellow-50 border-2 border-yellow-200 rounded-2xl p-6 mb-8 text-left">
+              <h3 className="font-bold text-yellow-800 mb-4 flex items-center gap-2">
+                <FiInfo className="text-xl" /> Why verification matters:
+              </h3>
+              <ul className="text-yellow-700 space-y-2">
+                <li className="flex items-start gap-2">
+                  <FiCheckCircle className="mt-1 flex-shrink-0" />
+                  <span>Prevents fake or malicious reports</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <FiCheckCircle className="mt-1 flex-shrink-0" />
+                  <span>Ensures reports come from real students</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <FiCheckCircle className="mt-1 flex-shrink-0" />
+                  <span>Builds trust in the platform</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <FiCheckCircle className="mt-1 flex-shrink-0" />
+                  <span>Protects accommodation providers from false claims</span>
+                </li>
+              </ul>
+            </div>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 mb-8 text-left">
+              <p className="text-sm text-blue-700">
+                <strong className="text-blue-900">Your account:</strong> {user?.email}
+              </p>
+              <p className="text-sm text-blue-700 mt-1">
+                Status: <span className="font-bold text-red-600">Not Verified</span>
+              </p>
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              <button
+                onClick={() => navigate('/verify-email')}
+                className="bg-blue-600 text-white px-8 py-4 rounded-xl font-bold hover:bg-blue-700 transition-all flex items-center justify-center gap-2 shadow-lg"
+              >
+                <FiMail /> Verify College Email
+              </button>
+              <button
+                onClick={() => navigate('/profile')}
+                className="bg-slate-100 text-slate-700 px-8 py-4 rounded-xl font-bold hover:bg-slate-200 transition-all"
+              >
+                Go to Profile
+              </button>
+            </div>
+
+            <p className="text-slate-400 text-sm mt-6">
+              Already verified? Try refreshing the page or{' '}
+              <button 
+                onClick={() => window.location.reload()} 
+                className="text-blue-600 hover:underline font-semibold"
+              >
+                click here to reload
+              </button>
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 pb-12">
@@ -143,6 +242,11 @@ export const ReportIncident: React.FC = () => {
           </Link>
           <h1 className="text-3xl font-extrabold">Report a Safety Concern</h1>
           <p className="text-blue-200 mt-2">Help make student housing safer by sharing your experience.</p>
+          
+          {/* ✅ Verified Badge */}
+          <div className="inline-flex items-center gap-2 bg-green-500/20 border border-green-400/30 text-green-300 px-4 py-2 rounded-full text-sm font-bold mt-4">
+            <FiCheckCircle /> Verified Student: {user?.collegeName || user?.email}
+          </div>
         </div>
       </div>
 
@@ -177,6 +281,31 @@ export const ReportIncident: React.FC = () => {
           </div>
 
           <div className="p-8 sm:p-12">
+            {/* ✅ Verification Error Alert */}
+            {submitError && (
+              <div className="bg-red-50 border-2 border-red-200 text-red-700 px-6 py-4 rounded-2xl mb-6 flex items-start gap-3">
+                <FiAlertTriangle className="mt-0.5 flex-shrink-0 text-xl" />
+                <div>
+                  <p className="font-bold mb-1">Error submitting report</p>
+                  <p className="text-sm">{submitError}</p>
+                  {submitError.includes('verify') && (
+                    <button
+                      onClick={() => navigate('/verify-email')}
+                      className="mt-3 text-sm bg-red-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-red-700 transition-all"
+                    >
+                      Verify Now →
+                    </button>
+                  )}
+                </div>
+                <button 
+                  onClick={() => setSubmitError('')}
+                  className="ml-auto text-red-600 hover:text-red-800"
+                >
+                  <FiX />
+                </button>
+              </div>
+            )}
+
             {submitSuccess ? (
               <div className="text-center py-12">
                 <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6 animate-bounce">

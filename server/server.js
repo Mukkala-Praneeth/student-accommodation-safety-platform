@@ -5,15 +5,23 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const cors = require("cors");
 const path = require("path");
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+
+// Models
 const Report = require("./models/Report");
-const authRoutes = require("./routes/auth");
-const authMiddleware = require("./middleware/authMiddleware");
-const adminMiddleware = require('./middleware/adminMiddleware');
-const ownerMiddleware = require('./middleware/ownerMiddleware');
 const User = require('./models/User');
 const Accommodation = require('./models/Accommodation');
 const CounterReport = require('./models/CounterReport');
 const OTP = require('./models/OTP');
+
+// Routes & Middleware
+const authRoutes = require("./routes/auth");
+const authMiddleware = require("./middleware/authMiddleware");
+const adminMiddleware = require('./middleware/adminMiddleware');
+const ownerMiddleware = require('./middleware/ownerMiddleware');
+
+// Utils
 const { generateOTP, sendOTPEmail } = require('./utils/emailService');
 const { cloudinary, upload } = require('./config/cloudinary');
 const { updateAccommodationScore } = require('./utils/trustScore');
@@ -29,17 +37,23 @@ try {
   verifyReportImage = null;
 }
 
+// Helper function to escape regex special characters
 function escapeRegex(string) {
   return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 const app = express();
 
+// ============================================================
+// SECURITY & MIDDLEWARE
+// ============================================================
+
 // Security headers
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
 
+// CORS configuration
 app.use(cors({
   origin: function(origin, callback) {
     const allowedOrigins = [
@@ -87,6 +101,10 @@ app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use("/api/auth", authRoutes);
 
+// ============================================================
+// BASIC ROUTES
+// ============================================================
+
 app.get("/", (req, res) => {
   res.send("Backend Running Successfully");
 });
@@ -95,7 +113,9 @@ app.get("/api/test", (req, res) => {
   res.json({ message: "Backend API working" });
 });
 
-// ============ IMAGE UPLOAD ROUTES ============
+// ============================================================
+// IMAGE UPLOAD ROUTES
+// ============================================================
 
 app.post('/api/upload', authMiddleware, upload.array('images', 5), (req, res) => {
   try {
@@ -137,8 +157,11 @@ app.delete('/api/upload/:publicId', authMiddleware, async (req, res) => {
   }
 });
 
-// ============ REPORT ROUTES ============
+// ============================================================
+// REPORT ROUTES
+// ============================================================
 
+// Get user's reports
 app.get('/api/reports/my-reports', authMiddleware, async (req, res) => {
   try {
     let page = parseInt(req.query.page) || 1;
@@ -179,6 +202,7 @@ app.get('/api/reports/my-reports', authMiddleware, async (req, res) => {
   }
 });
 
+// Get all reports (public)
 app.get('/api/reports', async (req, res) => {
   try {
     const reports = await Report.find()
@@ -198,9 +222,48 @@ app.get('/api/reports', async (req, res) => {
   }
 });
 
-// ✅ POST new report — WITH AI VERIFICATION
+// ✅ POST new report — WITH VERIFICATION CHECK & AI VERIFICATION
 app.post('/api/reports', authMiddleware, async (req, res) => {
   try {
+    // ✅ STEP 1: Get user and check verification
+    const user = await User.findById(req.user.id).select('role isCollegeVerified isVerified collegeName name email isBanned');
+    
+    if (!user) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'User not found' 
+      });
+    }
+
+    // ✅ STEP 2: Check if user is banned
+    if (user.isBanned) {
+      return res.status(403).json({ 
+        success: false, 
+        message: 'Your account has been suspended. Please contact support.' 
+      });
+    }
+
+    // ✅ STEP 3: Only students can submit reports
+    if (user.role !== 'student') {
+      return res.status(403).json({ 
+        success: false, 
+        message: 'Only students can submit safety reports' 
+      });
+    }
+
+    // ✅ STEP 4: Student must be verified (college verified OR email verified)
+    const isVerified = user.isCollegeVerified || user.isVerified;
+    
+    if (!isVerified) {
+      return res.status(403).json({ 
+        success: false, 
+        message: 'Please verify your college email before submitting reports. This helps ensure authentic reviews.',
+        requiresVerification: true,
+        userEmail: user.email
+      });
+    }
+
+    // ✅ STEP 5: Proceed with existing validation
     const { accommodation, accommodationName, issueType, description, images } = req.body;
 
     // Must have either accommodation ID or name
@@ -254,6 +317,7 @@ app.post('/api/reports', authMiddleware, async (req, res) => {
     if (verifyReportImage && validatedImages.length > 0 && validatedImages[0].url) {
       try {
         console.log('[Report Submission] Running AI verification...');
+        console.log('[Report Submission] User:', user.name, '(Verified:', isVerified ? 'Yes' : 'No', ')');
         console.log('[Report Submission] Image URL:', validatedImages[0].url);
         console.log('[Report Submission] Issue Type:', issueType);
         
@@ -331,6 +395,8 @@ app.post('/api/reports', authMiddleware, async (req, res) => {
     } else if (aiVerificationData?.verdict === 'VERIFIED') {
       responseMessage = 'Report submitted and verified by AI. Awaiting final approval.';
     }
+
+    console.log(`[Report Submission] Success - User: ${user.name}, Status: ${autoStatus}, AI: ${aiVerificationData?.verdict || 'N/A'}`);
 
     res.status(201).json({
       success: true,
@@ -519,6 +585,7 @@ app.post('/api/reports/:id/upvote', authMiddleware, async (req, res) => {
   }
 });
 
+// Verify/Dispute resolution
 app.put('/api/reports/:id/verify', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
@@ -575,6 +642,7 @@ app.put('/api/reports/:id/verify', authMiddleware, async (req, res) => {
   }
 });
 
+// Get resolution details
 app.get('/api/reports/:id/resolution', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
@@ -599,7 +667,10 @@ app.get('/api/reports/:id/resolution', authMiddleware, async (req, res) => {
   }
 });
 
-// ============ AI VERIFICATION TEST ENDPOINT ============
+// ============================================================
+// AI VERIFICATION TEST ENDPOINT
+// ============================================================
+
 app.post('/api/test-ai-verification', authMiddleware, async (req, res) => {
   try {
     const { imageUrl, issueType } = req.body;
@@ -640,63 +711,78 @@ app.post('/api/test-ai-verification', authMiddleware, async (req, res) => {
   }
 });
 
-// ============ ADMIN ROUTES ============
+// ============================================================
+// ADMIN ROUTES
+// ============================================================
 
+// Admin stats with AI analytics
 app.get('/api/admin/stats', authMiddleware, adminMiddleware, async (req, res) => {
   try {
+    const totalUsers = await User.countDocuments();
+    const totalAccommodations = await Accommodation.countDocuments();
     const totalReports = await Report.countDocuments();
     const pendingReports = await Report.countDocuments({ status: 'pending' });
-    const approvedReports = await Report.countDocuments({ status: 'approved' });
-    const rejectedReports = await Report.countDocuments({ status: 'rejected' });
-    const resolvedReports = await Report.countDocuments({ status: 'resolved' });
-    const verifiedReports = await Report.countDocuments({ status: 'verified' });
-    const disputedReports = await Report.countDocuments({ status: 'disputed' });
-    const totalUsers = await User.countDocuments({ role: 'student' });
-    const bannedUsers = await User.countDocuments({ isBanned: true });
 
-    // ✅ AI Verification stats
-    const aiVerifiedReports = await Report.countDocuments({ 'aiVerification.verdict': 'VERIFIED' });
-    const aiRejectedReports = await Report.countDocuments({ 'aiVerification.verdict': 'REJECTED' });
-    const aiNeedsReviewReports = await Report.countDocuments({ 'aiVerification.recommendAdminReview': true });
-
-    const issueStats = await Report.aggregate([
-      { $group: { _id: '$issueType', count: { $sum: 1 } } },
-      { $sort: { count: -1 } }
+    // ✅ AI Verification Statistics
+    const aiStats = await Report.aggregate([
+      {
+        $facet: {
+          total: [
+            { $match: { 'aiVerification': { $exists: true, $ne: null } } },
+            { $count: 'count' }
+          ],
+          verified: [
+            { $match: { 'aiVerification.verdict': 'VERIFIED' } },
+            { $count: 'count' }
+          ],
+          rejected: [
+            { $match: { 'aiVerification.verdict': 'REJECTED' } },
+            { $count: 'count' }
+          ],
+          needsReview: [
+            { $match: { 'aiVerification.verdict': 'NEEDS_REVIEW' } },
+            { $count: 'count' }
+          ],
+          avgConfidence: [
+            { $match: { 'aiVerification.confidence': { $exists: true } } },
+            { $group: { _id: null, avg: { $avg: '$aiVerification.confidence' } } }
+          ]
+        }
+      }
     ]);
+
+    const aiStatsData = aiStats[0];
 
     res.json({
       success: true,
       data: {
+        totalUsers,
+        totalAccommodations,
         totalReports,
         pendingReports,
-        approvedReports,
-        rejectedReports,
-        resolvedReports,
-        verifiedReports,
-        disputedReports,
-        totalUsers,
-        bannedUsers,
-        issueStats,
-        // ✅ AI stats
         aiStats: {
-          verified: aiVerifiedReports,
-          rejected: aiRejectedReports,
-          needsReview: aiNeedsReviewReports
+          totalWithAI: aiStatsData.total[0]?.count || 0,
+          verified: aiStatsData.verified[0]?.count || 0,
+          rejected: aiStatsData.rejected[0]?.count || 0,
+          needsReview: aiStatsData.needsReview[0]?.count || 0,
+          avgConfidence: aiStatsData.avgConfidence[0]?.avg || 0
         }
       }
     });
   } catch (error) {
+    console.error('Admin stats error:', error);
     res.status(500).json({ success: false, message: 'Error fetching stats', error: error.message });
   }
 });
 
+// Get all reports for admin with populated data
 app.get('/api/admin/reports', authMiddleware, adminMiddleware, async (req, res) => {
   try {
-    const { aiFilter } = req.query;
+    const { aiFilter, status } = req.query;
 
     let query = {};
 
-    // ✅ Filter by AI recommendation
+    // Filter by AI verdict
     if (aiFilter === 'needs-review') {
       query['aiVerification.recommendAdminReview'] = true;
     } else if (aiFilter === 'ai-verified') {
@@ -705,18 +791,80 @@ app.get('/api/admin/reports', authMiddleware, adminMiddleware, async (req, res) 
       query['aiVerification.verdict'] = 'REJECTED';
     }
 
+    // Filter by status
+    if (status && status !== 'all') {
+      query.status = status;
+    }
+
     const reports = await Report.find(query)
       .populate('user', 'name email isCollegeVerified collegeName')
       .populate('accommodation', 'name address city')
+      .populate('resolution.resolvedBy', 'name email')
       .sort({ createdAt: -1 })
       .lean();
 
-    res.json({ success: true, data: reports });
+    // ✅ Transform reports to match frontend expectations
+    const transformedReports = reports.map(report => {
+      // Handle user data
+      let userData = null;
+      if (report.user && typeof report.user === 'object') {
+        userData = {
+          _id: report.user._id,
+          name: report.user.name || 'Unknown',
+          email: report.user.email || 'N/A',
+          isCollegeVerified: report.user.isCollegeVerified || false,
+          collegeName: report.user.collegeName || null
+        };
+      }
+
+      // Handle accommodation data
+      let accommodationData = null;
+      if (report.accommodation && typeof report.accommodation === 'object') {
+        accommodationData = {
+          _id: report.accommodation._id,
+          name: report.accommodation.name || report.accommodationName || 'N/A',
+          address: report.accommodation.address || 'N/A',
+          city: report.accommodation.city || ''
+        };
+      } else if (report.accommodationName) {
+        accommodationData = {
+          _id: null,
+          name: report.accommodationName,
+          address: 'N/A',
+          city: ''
+        };
+      }
+
+      return {
+        _id: report._id,
+        category: report.category || report.issueType || 'Unknown',
+        issueType: report.issueType || report.category || 'Unknown',
+        description: report.description || '',
+        status: report.status || 'pending',
+        createdAt: report.createdAt,
+        images: report.images || [],
+        upvotes: report.upvotes || 0,
+        aiVerification: report.aiVerification || null,
+        resolution: report.resolution || null,
+        verification: report.verification || null,
+        userId: userData || { _id: null, name: 'Unknown User', email: 'N/A' },
+        accommodationId: accommodationData || { _id: null, name: 'N/A', address: 'N/A' },
+        user: userData,
+        accommodation: accommodationData,
+        accommodationName: report.accommodationName || accommodationData?.name || 'N/A'
+      };
+    });
+
+    console.log(`[Admin Reports] Found ${reports.length} reports`);
+
+    res.json({ success: true, data: transformedReports });
   } catch (error) {
+    console.error('Admin reports error:', error);
     res.status(500).json({ success: false, message: 'Error fetching reports', error: error.message });
   }
 });
 
+// Update report status
 app.put('/api/admin/reports/:id/status', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
@@ -734,14 +882,16 @@ app.put('/api/admin/reports/:id/status', authMiddleware, adminMiddleware, async 
       id,
       { status },
       { new: true }
-    ).populate('user', 'name email');
+    )
+    .populate('user', 'name email')
+    .populate('accommodation', 'name address');
 
     if (!report) {
       return res.status(404).json({ success: false, message: 'Report not found' });
     }
 
     if (report.accommodation) {
-      await updateAccommodationScore(Accommodation, Report, report.accommodation);
+      await updateAccommodationScore(Accommodation, Report, report.accommodation._id);
     }
 
     res.json({ success: true, message: `Report ${status}`, data: report });
@@ -750,6 +900,7 @@ app.put('/api/admin/reports/:id/status', authMiddleware, adminMiddleware, async 
   }
 });
 
+// Delete report (admin)
 app.delete('/api/admin/reports/:id', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
@@ -764,12 +915,17 @@ app.delete('/api/admin/reports/:id', authMiddleware, adminMiddleware, async (req
       return res.status(404).json({ success: false, message: 'Report not found' });
     }
 
+    if (report.accommodation) {
+      await updateAccommodationScore(Accommodation, Report, report.accommodation);
+    }
+
     res.json({ success: true, message: 'Report deleted successfully' });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Error deleting report', error: error.message });
   }
 });
 
+// Get all users
 app.get('/api/admin/users', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const users = await User.find({ role: 'student' })
@@ -783,6 +939,7 @@ app.get('/api/admin/users', authMiddleware, adminMiddleware, async (req, res) =>
   }
 });
 
+// Ban/Unban user
 app.put('/api/admin/users/:id/ban', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
@@ -812,6 +969,7 @@ app.put('/api/admin/users/:id/ban', authMiddleware, adminMiddleware, async (req,
   }
 });
 
+// Get counter reports
 app.get('/api/admin/counter-reports', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const counterReports = await CounterReport.find()
@@ -827,6 +985,7 @@ app.get('/api/admin/counter-reports', authMiddleware, adminMiddleware, async (re
   }
 });
 
+// Review counter report
 app.put('/api/admin/counter-reports/:id', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
@@ -861,6 +1020,7 @@ app.put('/api/admin/counter-reports/:id', authMiddleware, adminMiddleware, async
   }
 });
 
+// Reopen disputed report
 app.put('/api/admin/reports/:id/reopen', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
@@ -909,8 +1069,40 @@ app.put('/api/admin/reports/:id/reopen', authMiddleware, adminMiddleware, async 
   }
 });
 
-// ============ OWNER ROUTES ============
+// AI performance analytics
+app.get('/api/admin/ai-performance', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const aiPerformance = await Report.aggregate([
+      { $match: { 'aiVerification': { $exists: true, $ne: null } } },
+      {
+        $group: {
+          _id: '$aiVerification.verdict',
+          count: { $sum: 1 },
+          avgConfidence: { $avg: '$aiVerification.confidence' },
+          highSeverity: {
+            $sum: { $cond: [{ $eq: ['$aiVerification.severity', 'high'] }, 1, 0] }
+          },
+          mediumSeverity: {
+            $sum: { $cond: [{ $eq: ['$aiVerification.severity', 'medium'] }, 1, 0] }
+          },
+          lowSeverity: {
+            $sum: { $cond: [{ $eq: ['$aiVerification.severity', 'low'] }, 1, 0] }
+          }
+        }
+      }
+    ]);
 
+    res.json({ success: true, data: aiPerformance });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Error fetching AI performance', error: error.message });
+  }
+});
+
+// ============================================================
+// OWNER ROUTES
+// ============================================================
+
+// Register owner
 app.post('/api/auth/register-owner', async (req, res) => {
   try {
     const { name, email, password, phone } = req.body;
@@ -920,7 +1112,6 @@ app.post('/api/auth/register-owner', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Email already registered' });
     }
 
-    const bcrypt = require('bcryptjs');
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const newUser = new User({
@@ -933,7 +1124,6 @@ app.post('/api/auth/register-owner', async (req, res) => {
 
     await newUser.save();
 
-    const jwt = require('jsonwebtoken');
     const payload = {
       user: {
         id: newUser.id,
@@ -961,6 +1151,7 @@ app.post('/api/auth/register-owner', async (req, res) => {
   }
 });
 
+// Owner stats
 app.get('/api/owner/stats', authMiddleware, ownerMiddleware, async (req, res) => {
   try {
     const accommodations = await Accommodation.find({ owner: req.user.id });
@@ -995,6 +1186,7 @@ app.get('/api/owner/stats', authMiddleware, ownerMiddleware, async (req, res) =>
   }
 });
 
+// Get owner's accommodations
 app.get('/api/owner/accommodations', authMiddleware, ownerMiddleware, async (req, res) => {
   try {
     const accommodations = await Accommodation.find({ owner: req.user.id }).sort({ createdAt: -1 }).lean();
@@ -1004,6 +1196,7 @@ app.get('/api/owner/accommodations', authMiddleware, ownerMiddleware, async (req
   }
 });
 
+// Add accommodation
 app.post('/api/owner/accommodations', authMiddleware, ownerMiddleware, async (req, res) => {
   try {
     const { name, address, city, description, amenities, totalRooms, pricePerMonth, contactPhone, latitude, longitude } = req.body;
@@ -1038,6 +1231,7 @@ app.post('/api/owner/accommodations', authMiddleware, ownerMiddleware, async (re
   }
 });
 
+// Update accommodation
 app.put('/api/owner/accommodations/:id', authMiddleware, ownerMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
@@ -1076,6 +1270,7 @@ app.put('/api/owner/accommodations/:id', authMiddleware, ownerMiddleware, async 
   }
 });
 
+// Delete accommodation
 app.delete('/api/owner/accommodations/:id', authMiddleware, ownerMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
@@ -1100,6 +1295,7 @@ app.delete('/api/owner/accommodations/:id', authMiddleware, ownerMiddleware, asy
   }
 });
 
+// Get owner's reports
 app.get('/api/owner/reports', authMiddleware, ownerMiddleware, async (req, res) => {
   try {
     const accommodations = await Accommodation.find({ owner: req.user.id }).lean();
@@ -1122,6 +1318,7 @@ app.get('/api/owner/reports', authMiddleware, ownerMiddleware, async (req, res) 
   }
 });
 
+// Resolve report
 app.put('/api/owner/reports/:id/resolve', authMiddleware, ownerMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
@@ -1182,6 +1379,7 @@ app.put('/api/owner/reports/:id/resolve', authMiddleware, ownerMiddleware, async
   }
 });
 
+// Submit counter report
 app.post('/api/owner/counter-report', authMiddleware, ownerMiddleware, async (req, res) => {
   try {
     const { reportId, reason, explanation, evidenceUrls, evidenceDescription } = req.body;
@@ -1237,6 +1435,7 @@ app.post('/api/owner/counter-report', authMiddleware, ownerMiddleware, async (re
   }
 });
 
+// Get owner's counter reports
 app.get('/api/owner/counter-reports', authMiddleware, ownerMiddleware, async (req, res) => {
   try {
     const counterReports = await CounterReport.find({ owner: req.user.id })
@@ -1251,6 +1450,7 @@ app.get('/api/owner/counter-reports', authMiddleware, ownerMiddleware, async (re
   }
 });
 
+// Update occupancy
 app.put('/api/owner/accommodations/:id/occupancy', authMiddleware, ownerMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
@@ -1283,7 +1483,9 @@ app.put('/api/owner/accommodations/:id/occupancy', authMiddleware, ownerMiddlewa
   }
 });
 
-// ============ PROFILE ROUTES ============
+// ============================================================
+// PROFILE ROUTES
+// ============================================================
 
 app.get('/api/profile', authMiddleware, async (req, res) => {
   try {
@@ -1415,7 +1617,6 @@ app.put('/api/profile/password', authMiddleware, async (req, res) => {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
-    const bcrypt = require('bcryptjs');
     const isMatch = await bcrypt.compare(currentPassword, user.password);
 
     if (!isMatch) {
@@ -1454,7 +1655,9 @@ app.put('/api/profile/notifications', authMiddleware, async (req, res) => {
   }
 });
 
-// ============ OTP ROUTES ============
+// ============================================================
+// OTP ROUTES
+// ============================================================
 
 app.post('/api/otp/send-verification', async (req, res) => {
   try {
@@ -1606,7 +1809,6 @@ app.post('/api/otp/reset-password', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Incorrect OTP. Please try again.' });
     }
 
-    const bcrypt = require('bcryptjs');
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(newPassword, salt);
 
@@ -1624,10 +1826,13 @@ app.post('/api/otp/reset-password', async (req, res) => {
   }
 });
 
+// Apply rate limiting to OTP routes
 app.use('/api/otp/send-verification', authLimiter);
 app.use('/api/otp/forgot-password', authLimiter);
 
-// ============ ACCOMMODATION ROUTES ============
+// ============================================================
+// ACCOMMODATION ROUTES
+// ============================================================
 
 app.get('/api/accommodations', async (req, res) => {
   try {
@@ -1765,6 +1970,10 @@ app.post('/api/accommodations/:id/recalculate-score', authMiddleware, async (req
   }
 });
 
+// ============================================================
+// ERROR HANDLERS
+// ============================================================
+
 // 404 handler
 app.use((req, res) => {
   res.status(404).json({
@@ -1799,13 +2008,23 @@ app.use((err, req, res, next) => {
   });
 });
 
+// ============================================================
+// START SERVER
+// ============================================================
+
 const PORT = process.env.PORT || 5000;
 
 mongoose.connect(process.env.MONGO_URI)
   .then(() => {
-    console.log("MongoDB connected successfully");
+    console.log("✅ MongoDB connected successfully");
     app.listen(PORT, () => {
-      console.log(`Server running on port ${PORT}`);
+      console.log(`🚀 Server running on port ${PORT}`);
+      console.log(`📍 API URL: http://localhost:${PORT}`);
+      if (verifyReportImage) {
+        console.log('🤖 AI Verification: Enabled');
+      } else {
+        console.log('⚠️  AI Verification: Disabled (check API keys)');
+      }
     });
   })
-  .catch(err => console.error("MongoDB connection error:", err));
+  .catch(err => console.error("❌ MongoDB connection error:", err));
