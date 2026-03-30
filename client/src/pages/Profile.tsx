@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { VerifiedBadge } from '../components/VerifiedBadge';  // ✅ ADDED
 import { 
   FiUser, FiMail, FiCalendar, FiShield, FiStar, FiAward, 
   FiEdit2, FiLock, FiTrash2, FiArrowLeft, FiCheckCircle, FiInfo,
@@ -19,6 +20,8 @@ interface ProfileData {
   totalUpvotes: number;
   resolvedReports?: number;
   profilePhoto?: string;
+  isCollegeVerified?: boolean;  // ✅ ADDED
+  collegeName?: string;  // ✅ ADDED
   // Owner-specific fields
   totalProperties?: number;
   avgTrustScore?: number;
@@ -66,7 +69,6 @@ export default function Profile() {
   const navigate = useNavigate();
   const API = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
-  // ✅ Determine if user is owner
   const isOwner = user?.role === 'owner';
 
   useEffect(() => {
@@ -381,7 +383,7 @@ export default function Profile() {
                 <span className={`absolute top-2 right-2 w-3 h-3 ${isOwner ? 'bg-emerald-500' : 'bg-red-500'} rounded-full border-2 ${isOwner ? 'border-emerald-900' : 'border-slate-900'} animate-pulse`}></span>
               </button>
               
-              {/* Notifications Dropdown - DIFFERENT FOR OWNER */}
+              {/* Notifications Dropdown */}
               {showNotifications && (
                 <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden z-50">
                   <div className="p-4 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
@@ -392,7 +394,6 @@ export default function Profile() {
                   </div>
                   <div className="max-h-80 overflow-y-auto">
                     {isOwner ? (
-                      /* ========== OWNER NOTIFICATIONS ========== */
                       <>
                         <div className="p-4 hover:bg-gray-50 border-b border-gray-50 cursor-pointer transition-colors">
                           <div className="flex items-start gap-3">
@@ -420,7 +421,6 @@ export default function Profile() {
                         </div>
                       </>
                     ) : (
-                      /* ========== STUDENT NOTIFICATIONS ========== */
                       <>
                         <div className="p-4 hover:bg-gray-50 border-b border-gray-50 cursor-pointer transition-colors">
                           <div className="flex items-start gap-3">
@@ -503,10 +503,20 @@ export default function Profile() {
                   <FiShield className="h-3 w-3" />
                   {isOwner ? 'Property Owner' : profile?.role}
                 </span>
+                {/* ✅ VERIFIED BADGE FOR COLLEGE STUDENTS */}
+                {!isOwner && profile?.isCollegeVerified && (
+                  <VerifiedBadge collegeName={profile.collegeName} size="md" />
+                )}
               </div>
               <p className={`${isOwner ? 'text-emerald-200' : 'text-blue-200'} text-lg flex items-center justify-center md:justify-start gap-2 font-medium`}>
                 <FiMail className={isOwner ? 'text-emerald-400' : 'text-blue-400'} /> {profile?.email}
               </p>
+              {/* ✅ SHOW COLLEGE NAME IF VERIFIED */}
+              {!isOwner && profile?.isCollegeVerified && profile?.collegeName && (
+                <p className="text-blue-300 text-sm flex items-center justify-center md:justify-start gap-2 font-medium mt-2">
+                  <FiMapPin className="text-blue-400" /> {profile.collegeName}
+                </p>
+              )}
               <div className="mt-6 flex flex-wrap justify-center md:justify-start gap-4">
                 <div className="bg-white/5 backdrop-blur-md border border-white/10 px-4 py-2 rounded-xl flex items-center gap-2">
                   <FiCalendar className={isOwner ? 'text-emerald-400' : 'text-blue-400'} />
@@ -612,9 +622,8 @@ export default function Profile() {
       )}
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-16">
-        {/* ========== ROLE-BASED STATS GRID ========== */}
+        {/* Role-based Stats Grid */}
         {isOwner ? (
-          /* ========== OWNER STATS ========== */
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
             {[
               { label: 'Properties Managed', value: profile?.totalProperties || 0, icon: <FiHome />, color: 'text-emerald-600', bg: 'bg-emerald-50' },
@@ -634,7 +643,6 @@ export default function Profile() {
             ))}
           </div>
         ) : (
-          /* ========== STUDENT STATS ========== */
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
             {[
               { label: 'Reports Filed', value: profile?.totalReports || 0, icon: <FiFileText />, color: 'text-blue-600', bg: 'bg-blue-50' },
@@ -655,7 +663,6 @@ export default function Profile() {
         )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Settings Sections */}
           <div className="lg:col-span-2 space-y-8">
             
             {/* Personal Information */}
@@ -716,6 +723,23 @@ export default function Profile() {
                     </div>
                   </div>
                 </div>
+
+                {/* ✅ SHOW COLLEGE VERIFICATION STATUS */}
+                {!isOwner && profile?.isCollegeVerified && (
+                  <div className="p-6 bg-blue-50 border border-blue-100 rounded-xl">
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                        <FiCheckCircle className="h-5 w-5 text-blue-600" />
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-blue-900">Verified College Student</h4>
+                        <p className="text-sm text-blue-700 mt-1">
+                          {profile.collegeName || 'Educational institution'} • Your reports carry verified student status
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -813,7 +837,6 @@ export default function Profile() {
               </div>
             </div>
 
-            {/* ========== OWNER-SPECIFIC: QUICK LINKS ========== */}
             {isOwner && (
               <div className="bg-gradient-to-br from-emerald-900 to-teal-900 text-white rounded-2xl shadow-lg p-8 border border-emerald-700/30">
                 <h3 className="text-xl font-bold mb-6 flex items-center gap-2">

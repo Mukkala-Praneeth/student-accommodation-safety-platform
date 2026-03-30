@@ -5,12 +5,16 @@ interface User {
   name: string;
   email: string;
   role: 'student' | 'owner' | 'admin';
+  isCollegeVerified?: boolean;  // ✅ NEW
+  collegeName?: string;  // ✅ NEW
 }
 
 interface AuthContextType {
   user: User | null;
+  token: string | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<any>;
+  register: (name: string, email: string, password: string, role: string) => Promise<any>;
   logout: () => void;
   refreshUser: () => void;
 }
@@ -19,8 +23,12 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const API = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+  
+  const [token, setToken] = useState<string | null>(() => {
+    return localStorage.getItem('token');
+  });
+  
   const [user, setUser] = useState<User | null>(() => {
-    // Initialize from localStorage immediately (not in useEffect)
     const storedUser = localStorage.getItem('user');
     const storedToken = localStorage.getItem('token');
     if (storedUser && storedToken) {
@@ -32,9 +40,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
     return null;
   });
+  
   const [loading, setLoading] = useState(true);
 
-  // Verify token on mount
   useEffect(() => {
     const verifyAuth = async () => {
       const storedToken = localStorage.getItem('token');
@@ -42,7 +50,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       
       if (storedToken && storedUser) {
         try {
-          // Optional: Verify token with backend
           const res = await fetch(`${API}/api/profile`, {
             headers: {
               'Authorization': `Bearer ${storedToken}`
@@ -50,17 +57,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           });
           
           if (res.ok) {
-            // Token is valid, keep user
             setUser(JSON.parse(storedUser));
+            setToken(storedToken);
           } else {
-            // Token invalid, clear storage
             localStorage.removeItem('user');
             localStorage.removeItem('token');
             setUser(null);
+            setToken(null);
           }
         } catch {
-          // Network error, keep cached user (offline support)
           setUser(JSON.parse(storedUser));
+          setToken(storedToken);
         }
       }
       setLoading(false);
@@ -85,31 +92,61 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       localStorage.setItem("user", JSON.stringify(userData));
       localStorage.setItem("token", data.token);
       setUser(userData);
+      setToken(data.token);
       return userData;
     } else {
       throw new Error(data.message || "Invalid credentials");
     }
   };
 
+  const register = async (name: string, email: string, password: string, role: string): Promise<any> => {
+    const res = await fetch(`${API}/api/auth/signup`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ name, email, password, role }),
+    });
+
+    const data = await res.json();
+
+    if (res.ok && data.success) {
+      return data;
+    } else if (res.ok && data.token) {
+      const userData = data.user || data.data?.user;
+      localStorage.setItem("user", JSON.stringify(userData));
+      localStorage.setItem("token", data.token);
+      setUser(userData);
+      setToken(data.token);
+      return userData;
+    } else {
+      throw new Error(data.message || "Registration failed");
+    }
+  };
+
   const refreshUser = () => {
     const storedUser = localStorage.getItem('user');
+    const storedToken = localStorage.getItem('token');
     if (storedUser) {
       try {
         setUser(JSON.parse(storedUser));
+        setToken(storedToken);
       } catch {
         setUser(null);
+        setToken(null);
       }
     }
   };
 
   const logout = () => {
     setUser(null);
+    setToken(null);
     localStorage.removeItem("user");
     localStorage.removeItem("token");
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, refreshUser }}>
+    <AuthContext.Provider value={{ user, token, loading, login, register, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

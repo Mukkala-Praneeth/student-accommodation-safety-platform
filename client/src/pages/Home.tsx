@@ -168,9 +168,9 @@ export const Home: React.FC = () => {
       <div className="relative bg-gradient-to-br from-slate-900 via-blue-900 to-indigo-900 overflow-hidden">
         {/* Animated Background Elements */}
         <div className="absolute inset-0 overflow-hidden">
-          <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-500 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse"></div>
-          <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-purple-500 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse" style={{ animationDelay: '1s' }}></div>
-          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-indigo-500 rounded-full mix-blend-multiply filter blur-3xl opacity-10 animate-pulse" style={{ animationDelay: '2s' }}></div>
+          <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-500 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob"></div>
+          <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-purple-500 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob" style={{ animationDelay: '2s' }}></div>
+          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-indigo-500 rounded-full mix-blend-multiply filter blur-3xl opacity-10 animate-blob" style={{ animationDelay: '4s' }}></div>
         </div>
 
         {/* Grid Pattern Overlay */}
@@ -180,7 +180,7 @@ export const Home: React.FC = () => {
           <div className={`text-center transform transition-all duration-1000 ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}>
             
             {/* Trust Badge */}
-            <div className="inline-flex items-center px-4 py-2 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 text-white/90 text-sm mb-8">
+            <div className="inline-flex items-center px-4 py-2 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 text-white/90 text-sm mb-8 animate-pulse duration-[3000ms]">
               <FiShield className="h-4 w-4 mr-2 text-green-400" />
               <span>Trusted by 10,000+ Students Across India</span>
             </div>
@@ -208,7 +208,7 @@ export const Home: React.FC = () => {
   {user ? (
     <Link
       to={user.role === 'owner' ? '/owner/dashboard' : user.role === 'admin' ? '/admin' : '/dashboard'}
-      className="group inline-flex items-center px-8 py-4 text-lg font-bold rounded-xl text-slate-900 bg-gradient-to-r from-yellow-400 to-orange-400 hover:from-yellow-300 hover:to-orange-300 transform hover:scale-105 transition-all duration-200 shadow-2xl shadow-orange-500/25"
+      className="group inline-flex items-center px-8 py-4 text-lg font-bold rounded-xl text-slate-900 bg-gradient-to-r from-yellow-400 to-orange-400 hover:from-yellow-300 hover:to-orange-300 transform hover:scale-105 active:scale-95 transition-all duration-200 shadow-2xl shadow-orange-500/25"
     >
       Go to Dashboard
       <FiArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
@@ -217,7 +217,7 @@ export const Home: React.FC = () => {
     <>
       <Link
         to="/accommodations"
-        className="group inline-flex items-center px-8 py-4 text-lg font-bold rounded-xl text-slate-900 bg-gradient-to-r from-yellow-400 to-orange-400 hover:from-yellow-300 hover:to-orange-300 transform hover:scale-105 transition-all duration-200 shadow-2xl shadow-orange-500/25"
+        className="group inline-flex items-center px-8 py-4 text-lg font-bold rounded-xl text-slate-900 bg-gradient-to-r from-yellow-400 to-orange-400 hover:from-yellow-300 hover:to-orange-300 transform hover:scale-105 active:scale-95 transition-all duration-200 shadow-2xl shadow-orange-500/25"
       >
         <FiMap className="mr-2 h-5 w-5" />
         Search Safe Accommodations
@@ -225,7 +225,7 @@ export const Home: React.FC = () => {
       </Link>
       <Link
         to="/register"
-        className="group inline-flex items-center px-8 py-4 text-lg font-semibold rounded-xl text-white border-2 border-white/30 hover:bg-white/10 backdrop-blur-sm transition-all duration-200"
+        className="group inline-flex items-center px-8 py-4 text-lg font-semibold rounded-xl text-white border-2 border-white/30 hover:bg-white/10 active:scale-95 backdrop-blur-sm transition-all duration-200"
       >
         Report a Safety Issue
         <FiAlertTriangle className="ml-2 h-5 w-5" />
@@ -236,15 +236,15 @@ export const Home: React.FC = () => {
 
             {/* Trust Indicators */}
             <div className="flex flex-wrap justify-center items-center gap-8 text-white/60 text-sm">
-              <div className="flex items-center">
+              <div className="flex items-center animate-pulse duration-[3000ms]">
                 <FiCheckCircle className="h-5 w-5 text-green-400 mr-2" />
                 <span>100% Verified Reports</span>
               </div>
-              <div className="flex items-center">
+              <div className="flex items-center animate-pulse duration-[3000ms]" style={{ animationDelay: '500ms' }}>
                 <FiShield className="h-5 w-5 text-blue-400 mr-2" />
                 <span>Anonymous & Secure</span>
               </div>
-              <div className="flex items-center">
+              <div className="flex items-center animate-pulse duration-[3000ms]" style={{ animationDelay: '1000ms' }}>
                 <FiMapPin className="h-5 w-5 text-red-400 mr-2" />
                 <span>50+ Cities Covered</span>
               </div>
@@ -282,7 +282,7 @@ export const Home: React.FC = () => {
               { icon: "💧", title: "Water Issues", desc: "Contaminated or irregular water supply" },
               { icon: "🔓", title: "Security Gaps", desc: "Broken locks, no CCTV, unsafe premises" }
             ].map((problem, i) => (
-              <div key={i} className="bg-red-50 border border-red-100 rounded-2xl p-6 hover:shadow-lg transition-shadow">
+              <div key={i} className="bg-red-50 border border-red-100 rounded-2xl p-6 hover:scale-[1.02] hover:-translate-y-1 hover:shadow-xl transition-all duration-300 ease-out">
                 <div className="text-4xl mb-4">{problem.icon}</div>
                 <h3 className="font-bold text-gray-900 text-lg mb-2">{problem.title}</h3>
                 <p className="text-gray-600 text-sm">{problem.desc}</p>
@@ -302,7 +302,15 @@ export const Home: React.FC = () => {
               { value: 2500, suffix: "+", label: "Safety Reports Filed", icon: <FiFileText className="h-8 w-8" /> },
               { value: 95, suffix: "%", label: "Issues Resolved", icon: <FiCheckCircle className="h-8 w-8" /> }
             ].map((stat, i) => (
-              <div key={i} className="text-white">
+              <div 
+                key={i} 
+                className="text-white transform transition-all duration-700 delay-[200ms]"
+                style={{ 
+                  animation: 'fadeInUp 0.8s ease-out forwards',
+                  animationDelay: `${i * 150}ms`,
+                  opacity: 0 
+                }}
+              >
                 <div className="flex justify-center mb-3 opacity-80">{stat.icon}</div>
                 <div className="text-4xl lg:text-5xl font-bold mb-2">
                   <AnimatedCounter end={stat.value} suffix={stat.suffix} />
@@ -334,7 +342,7 @@ export const Home: React.FC = () => {
                   <div className="hidden lg:block absolute top-12 left-full w-full h-0.5 bg-gradient-to-r from-blue-300 to-transparent z-0"></div>
                 )}
                 
-                <div className="relative bg-white rounded-2xl p-6 shadow-lg hover:shadow-xl transition-shadow border border-gray-100 z-10">
+                <div className="relative bg-white rounded-2xl p-6 shadow-lg hover:scale-[1.02] hover:-translate-y-1 hover:shadow-2xl transition-all duration-300 ease-out border border-gray-100 z-10">
                   {/* Step Number */}
                   <div className="absolute -top-4 -left-4 w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 text-white font-bold flex items-center justify-center text-lg shadow-lg">
                     {step.step}
@@ -354,7 +362,7 @@ export const Home: React.FC = () => {
           <div className="text-center mt-12">
             <Link
               to="/accommodations"
-              className="inline-flex items-center px-8 py-4 text-lg font-bold rounded-xl text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 transform hover:scale-105 transition-all duration-200 shadow-xl"
+              className="inline-flex items-center px-8 py-4 text-lg font-bold rounded-xl text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 transform hover:scale-105 active:scale-95 transition-all duration-200 shadow-xl"
             >
               <FiSearch className="mr-2 h-5 w-5" />
               Start Searching Now
@@ -380,13 +388,13 @@ export const Home: React.FC = () => {
             {features.map((feature, i) => (
               <div 
                 key={i} 
-                className="group relative bg-white rounded-2xl p-8 border border-gray-200 hover:border-transparent hover:shadow-2xl transition-all duration-300 overflow-hidden"
+                className="group relative bg-white rounded-2xl p-8 border border-gray-200 hover:border-transparent hover:scale-[1.02] hover:-translate-y-1 hover:shadow-2xl transition-all duration-300 ease-out overflow-hidden"
               >
                 {/* Gradient Background on Hover */}
                 <div className={`absolute inset-0 bg-gradient-to-br ${feature.color} opacity-0 group-hover:opacity-5 transition-opacity duration-300`}></div>
                 
                 <div className="relative z-10">
-                  <div className={`inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br ${feature.color} text-white mb-6 shadow-lg`}>
+                  <div className={`inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br ${feature.color} text-white mb-6 shadow-lg group-hover:scale-110 transition-transform duration-300`}>
                     {feature.icon}
                   </div>
                   <h3 className="font-bold text-gray-900 text-xl mb-3">{feature.title}</h3>
@@ -479,7 +487,7 @@ export const Home: React.FC = () => {
                 className={`bg-white rounded-2xl p-8 shadow-lg border-t-4 ${
                   stakeholder.color === 'blue' ? 'border-blue-500' :
                   stakeholder.color === 'green' ? 'border-green-500' : 'border-purple-500'
-                } hover:shadow-xl transition-shadow`}
+                } hover:scale-[1.02] hover:-translate-y-1 hover:shadow-2xl transition-all duration-300 ease-out`}
               >
                 <div className={`inline-flex items-center justify-center w-16 h-16 rounded-2xl mb-6 ${
                   stakeholder.color === 'blue' ? 'bg-blue-100 text-blue-600' :
@@ -533,7 +541,15 @@ export const Home: React.FC = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {testimonials.map((testimonial, i) => (
-              <div key={i} className="bg-gray-50 rounded-2xl p-6 relative">
+              <div 
+                key={i} 
+                className="bg-gray-50 rounded-2xl p-6 relative hover:scale-[1.02] transition-transform duration-300"
+                style={{ 
+                  animation: 'fadeInUp 0.8s ease-out forwards',
+                  animationDelay: `${i * 200 + 400}ms`,
+                  opacity: 0 
+                }}
+              >
                 {/* Quote Mark */}
                 <div className="absolute -top-4 left-6 text-6xl text-blue-200 font-serif">"</div>
                 
@@ -579,14 +595,14 @@ export const Home: React.FC = () => {
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link
               to="/accommodations"
-              className="inline-flex items-center justify-center px-8 py-4 text-lg font-bold rounded-xl text-indigo-700 bg-white hover:bg-gray-100 transform hover:scale-105 transition-all duration-200 shadow-xl"
+              className="inline-flex items-center justify-center px-8 py-4 text-lg font-bold rounded-xl text-indigo-700 bg-white hover:bg-gray-100 transform hover:scale-105 active:scale-95 transition-all duration-200 shadow-xl"
             >
               <FiSearch className="mr-2 h-5 w-5" />
               Search Safe Accommodations
             </Link>
             <Link
               to="/register"
-              className="inline-flex items-center justify-center px-8 py-4 text-lg font-bold rounded-xl text-white border-2 border-white/50 hover:bg-white/10 transition-all duration-200"
+              className="inline-flex items-center justify-center px-8 py-4 text-lg font-bold rounded-xl text-white border-2 border-white/50 hover:bg-white/10 active:scale-95 transition-all duration-200"
             >
               <FiAlertTriangle className="mr-2 h-5 w-5" />
               Report a Safety Issue

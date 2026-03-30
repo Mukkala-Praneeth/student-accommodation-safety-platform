@@ -3,8 +3,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { 
   FiLogIn, FiLogOut, FiUser, FiHome, FiList, FiAlertTriangle, 
-  FiShield, FiBell, FiChevronDown, FiMenu, FiX, FiActivity,
-  FiCheckCircle, FiThumbsUp, FiAlertCircle, FiInfo
+  FiShield, FiChevronDown, FiMenu, FiX, FiActivity
 } from 'react-icons/fi';
 
 export const Header: React.FC = () => {
@@ -13,47 +12,12 @@ export const Header: React.FC = () => {
   const location = useLocation();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
-  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   
-  const notificationRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
-
-  // Sample notifications - In production, fetch from API
-  const [notifications] = useState([
-    {
-      id: 1,
-      type: 'success',
-      title: 'Report Approved',
-      message: 'Your water quality report was verified',
-      time: '2 hours ago',
-      read: false
-    },
-    {
-      id: 2,
-      type: 'info',
-      title: 'New Confirmation',
-      message: 'Someone confirmed your safety report',
-      time: '5 hours ago',
-      read: false
-    },
-    {
-      id: 3,
-      type: 'warning',
-      title: 'Safety Alert',
-      message: 'New report filed in your area',
-      time: '1 day ago',
-      read: true
-    }
-  ]);
-
-  const unreadCount = notifications.filter(n => !n.read).length;
 
   // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (notificationRef.current && !notificationRef.current.contains(event.target as Node)) {
-        setIsNotificationsOpen(false);
-      }
       if (profileRef.current && !profileRef.current.contains(event.target as Node)) {
         setIsProfileOpen(false);
       }
@@ -65,7 +29,6 @@ export const Header: React.FC = () => {
 
   // Close dropdowns on route change
   useEffect(() => {
-    setIsNotificationsOpen(false);
     setIsProfileOpen(false);
     setIsMenuOpen(false);
   }, [location.pathname]);
@@ -78,32 +41,6 @@ export const Header: React.FC = () => {
 
   const isActive = (path: string) => location.pathname === path;
 
-  const getNotificationIcon = (type: string) => {
-    switch (type) {
-      case 'success':
-        return <FiCheckCircle className="text-green-600" />;
-      case 'info':
-        return <FiThumbsUp className="text-blue-600" />;
-      case 'warning':
-        return <FiAlertCircle className="text-yellow-600" />;
-      default:
-        return <FiInfo className="text-gray-600" />;
-    }
-  };
-
-  const getNotificationBg = (type: string) => {
-    switch (type) {
-      case 'success':
-        return 'bg-green-100';
-      case 'info':
-        return 'bg-blue-100';
-      case 'warning':
-        return 'bg-yellow-100';
-      default:
-        return 'bg-gray-100';
-    }
-  };
-
   return (
     <header className="bg-white/80 backdrop-blur-md sticky top-0 z-50 border-b border-gray-100">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -112,10 +49,10 @@ export const Header: React.FC = () => {
           {/* Logo */}
           <div className="flex items-center">
             <Link to="/" className="flex items-center space-x-2 group">
-              <div className="bg-gradient-to-br from-blue-600 to-indigo-700 p-2 rounded-xl shadow-lg shadow-blue-200 group-hover:scale-105 transition-transform">
+              <div className="bg-gradient-to-br from-blue-600 to-indigo-700 p-2 rounded-xl shadow-lg shadow-blue-200 group-hover:scale-110 transition-transform duration-300">
                 <FiShield className="h-6 w-6 text-white" />
               </div>
-              <span className="text-xl font-black tracking-tighter text-slate-900 uppercase">
+              <span className="text-xl font-black tracking-tighter text-slate-900 uppercase group-hover:scale-105 transition-transform duration-200">
                 Safe<span className="text-blue-600">Stay</span>
               </span>
             </Link>
@@ -125,13 +62,13 @@ export const Header: React.FC = () => {
           <nav className="hidden lg:flex items-center space-x-1">
             <Link 
               to="/" 
-              className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${isActive('/') ? 'text-blue-600 bg-blue-50' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'}`}
+              className={`px-4 py-2 rounded-xl text-sm font-bold transition-all relative after:absolute after:bottom-1 after:left-4 after:right-4 after:h-0.5 after:bg-blue-600 after:transition-all after:duration-300 ${isActive('/') ? 'text-blue-600 bg-blue-50 after:w-auto' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50 after:w-0 hover:after:w-[calc(100%-2rem)]'}`}
             >
               Home
             </Link>
             <Link 
               to="/accommodations" 
-              className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${isActive('/accommodations') ? 'text-blue-600 bg-blue-50' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'}`}
+              className={`px-4 py-2 rounded-xl text-sm font-bold transition-all relative after:absolute after:bottom-1 after:left-4 after:right-4 after:h-0.5 after:bg-blue-600 after:transition-all after:duration-300 ${isActive('/accommodations') ? 'text-blue-600 bg-blue-50 after:w-auto' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50 after:w-0 hover:after:w-[calc(100%-2rem)]'}`}
             >
               Explore
             </Link>
@@ -141,13 +78,13 @@ export const Header: React.FC = () => {
               <>
                 <Link 
                   to="/dashboard" 
-                  className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${isActive('/dashboard') ? 'text-blue-600 bg-blue-50' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'}`}
+                  className={`px-4 py-2 rounded-xl text-sm font-bold transition-all relative after:absolute after:bottom-1 after:left-4 after:right-4 after:h-0.5 after:bg-blue-600 after:transition-all after:duration-300 ${isActive('/dashboard') ? 'text-blue-600 bg-blue-50 after:w-auto' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50 after:w-0 hover:after:w-[calc(100%-2rem)]'}`}
                 >
                   Dashboard
                 </Link>
                 <Link 
                   to="/report" 
-                  className="ml-2 px-5 py-2.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl text-sm font-bold transition-all flex items-center gap-2"
+                  className="ml-2 px-5 py-2.5 bg-red-50 hover:bg-red-100 active:scale-95 text-red-600 rounded-xl text-sm font-bold transition-all flex items-center gap-2"
                 >
                   <FiAlertTriangle /> Report Issue
                 </Link>
@@ -157,7 +94,7 @@ export const Header: React.FC = () => {
             {user?.role === 'owner' && (
               <Link 
                 to="/owner/dashboard" 
-                className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${isActive('/owner/dashboard') ? 'text-emerald-600 bg-emerald-50' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'}`}
+                className={`px-4 py-2 rounded-xl text-sm font-bold transition-all relative after:absolute after:bottom-1 after:left-4 after:right-4 after:h-0.5 after:bg-emerald-600 after:transition-all after:duration-300 ${isActive('/owner/dashboard') ? 'text-emerald-600 bg-emerald-50 after:w-auto' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50 after:w-0 hover:after:w-[calc(100%-2rem)]'}`}
               >
                 Owner Panel
               </Link>
@@ -166,113 +103,22 @@ export const Header: React.FC = () => {
             {user?.role === 'admin' && (
               <Link 
                 to="/admin" 
-                className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${isActive('/admin') ? 'text-red-600 bg-red-50' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'}`}
+                className={`px-4 py-2 rounded-xl text-sm font-bold transition-all relative after:absolute after:bottom-1 after:left-4 after:right-4 after:h-0.5 after:bg-red-600 after:transition-all after:duration-300 ${isActive('/admin') ? 'text-red-600 bg-red-50 after:w-auto' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50 after:w-0 hover:after:w-[calc(100%-2rem)]'}`}
               >
                 Moderation
               </Link>
             )}
           </nav>
 
-          {/* Right Section: Notifications & Profile */}
+          {/* Right Section: Profile */}
           <div className="flex items-center space-x-3">
             {user ? (
               <>
-                {/* Notification Bell */}
-                <div className="relative" ref={notificationRef}>
-                  <button 
-                    onClick={() => {
-                      setIsNotificationsOpen(!isNotificationsOpen);
-                      setIsProfileOpen(false);
-                    }}
-                    className={`p-2.5 rounded-xl transition-all relative ${
-                      isNotificationsOpen 
-                        ? 'text-blue-600 bg-blue-50' 
-                        : 'text-slate-400 hover:text-blue-600 hover:bg-blue-50'
-                    }`}
-                  >
-                    <FiBell className="h-5 w-5" />
-                    {unreadCount > 0 && (
-                      <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white animate-pulse"></span>
-                    )}
-                  </button>
-
-                  {/* Notifications Dropdown */}
-                  {isNotificationsOpen && (
-                    <div className="absolute right-0 mt-3 w-80 bg-white rounded-2xl shadow-2xl shadow-slate-200 border border-slate-100 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200 z-50">
-                      {/* Header */}
-                      <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
-                        <h3 className="font-bold text-slate-900">Notifications</h3>
-                        {unreadCount > 0 && (
-                          <span className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded-full font-semibold">
-                            {unreadCount} New
-                          </span>
-                        )}
-                      </div>
-                      
-                      {/* Notification List */}
-                      <div className="max-h-80 overflow-y-auto">
-                        {notifications.length > 0 ? (
-                          notifications.map((notification) => (
-                            <div 
-                              key={notification.id}
-                              className={`p-4 border-b border-slate-50 cursor-pointer transition-colors hover:bg-slate-50 ${
-                                !notification.read ? 'bg-blue-50/30' : ''
-                              }`}
-                            >
-                              <div className="flex items-start gap-3">
-                                <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${getNotificationBg(notification.type)}`}>
-                                  {getNotificationIcon(notification.type)}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-2">
-                                    <p className="text-sm font-semibold text-slate-900">{notification.title}</p>
-                                    {!notification.read && (
-                                      <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
-                                    )}
-                                  </div>
-                                  <p className="text-xs text-slate-500 mt-0.5 line-clamp-1">{notification.message}</p>
-                                  <p className="text-xs text-slate-400 mt-1">{notification.time}</p>
-                                </div>
-                              </div>
-                            </div>
-                          ))
-                        ) : (
-                          <div className="p-8 text-center">
-                            <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                              <FiBell className="text-slate-400" />
-                            </div>
-                            <p className="text-sm text-slate-500">No notifications yet</p>
-                          </div>
-                        )}
-                      </div>
-                      
-                      {/* Footer */}
-                      {notifications.length > 0 && (
-                        <div className="p-3 bg-slate-50 border-t border-slate-100">
-                          <button 
-                            onClick={() => {
-                              setIsNotificationsOpen(false);
-                              // Navigate to notifications page if you have one
-                              // navigate('/notifications');
-                            }}
-                            className="w-full text-center text-sm font-semibold text-blue-600 hover:text-blue-700 transition-colors"
-                          >
-                            View All Notifications
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-
                 {/* Profile Dropdown */}
                 <div className="relative" ref={profileRef}>
                   <button 
-                    onClick={() => {
-                      setIsProfileOpen(!isProfileOpen);
-                      setIsNotificationsOpen(false);
-                    }}
-                    className="flex items-center gap-2 p-1.5 pl-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-2xl transition-all"
+                    onClick={() => setIsProfileOpen(!isProfileOpen)}
+                    className="flex items-center gap-2 p-1.5 pl-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-2xl hover:ring-2 hover:ring-offset-2 hover:ring-blue-500 transition-all duration-200"
                   >
                     <div className="flex flex-col items-end hidden sm:flex">
                       <span className="text-xs font-black text-slate-900 leading-none">{user.name.split(' ')[0]}</span>

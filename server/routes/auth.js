@@ -2,6 +2,9 @@ const express = require("express");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
+const { generateOTP, sendOTPEmail } = require('../utils/emailService');
+const { checkCollegeEmail } = require('../utils/collegeVerification');  // ✅ NEW
+const OTP = require('../models/OTP');
 
 const router = express.Router();
 
@@ -35,21 +38,23 @@ router.post("/signup", async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    // 5. Create user instance
+    // ✅ 5. Check if it's a college email
+    const collegeCheck = checkCollegeEmail(normalizedEmail);
+
+    // 6. Create user instance
     const newUser = new User({
       name,
       email: normalizedEmail,
       password: hashedPassword,
       role: role || "student",
+      isCollegeVerified: collegeCheck.isVerified,  // ✅ NEW
+      collegeName: collegeCheck.collegeName  // ✅ NEW
     });
 
-    // 6. Save user to MongoDB
+    // 7. Save user to MongoDB
     await newUser.save();
 
-    // Send verification OTP
-    const { generateOTP, sendOTPEmail } = require('../utils/emailService');
-    const OTP = require('../models/OTP');
-
+    // 8. Generate and send OTP
     const otp = generateOTP();
     const otpDoc = new OTP({
       email: newUser.email.toLowerCase(),
@@ -59,28 +64,24 @@ router.post("/signup", async (req, res) => {
     });
     await otpDoc.save();
 
-    // Send email in background — dont block response
-    const { sendWelcomeEmail } = require('../utils/emailService');
-    const verifyLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/verify-email`;
-    
-    sendOTPEmail(newUser.email, otp, 'verification');
-    
-    try {
-      sendWelcomeEmail(newUser.email, newUser.name, verifyLink);
-    } catch (emailError) {
-      console.error('Welcome email failed:', emailError);
-    }
+    // Send OTP email
+    sendOTPEmail(newUser.email, otp, 'verification').catch(err => {
+      console.error('OTP email failed:', err);
+    });
 
     res.status(201).json({
       success: true,
-      message: "User registered successfully. Please verify your email.",
+      message: collegeCheck.isVerified 
+        ? `Registration successful! College verified: ${collegeCheck.collegeName}. Check your email for OTP.`
+        : "Registration successful! Please check your email for the verification code.",
       requiresVerification: true,
-      email: newUser.email
+      email: newUser.email,
+      isCollegeVerified: collegeCheck.isVerified,  // ✅ Tell frontend about badge
+      collegeName: collegeCheck.collegeName
     });
   } catch (err) {
     console.error("Signup error:", err);
     
-    // Handle MongoDB Duplicate Key Error (11000)
     if (err.code === 11000) {
       return res.status(400).json({ 
         success: false, 
@@ -101,24 +102,20 @@ router.post("/login", async (req, res) => {
   const { email, password } = req.body;
 
   try {
-    // Validate inputs
     if (!email || !password) {
       return res.status(400).json({ message: "Please enter all fields" });
     }
 
-    // Find user
     const user = await User.findOne({ email: email.toLowerCase() });
     if (!user) {
       return res.status(400).json({ message: "Invalid credentials" });
     }
 
-    // Compare password
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(400).json({ message: "Invalid credentials" });
     }
 
-    // Check if email is verified
     if (!user.isVerified) {
       return res.status(403).json({
         success: false,
@@ -128,13 +125,14 @@ router.post("/login", async (req, res) => {
       });
     }
 
-    // Generate JWT
     const payload = {
       user: {
         id: user.id,
         name: user.name,
         email: user.email,
         role: user.role,
+        isCollegeVerified: user.isCollegeVerified,  // ✅ Include in JWT
+        collegeName: user.collegeName  // ✅ Include in JWT
       },
     };
 
@@ -151,6 +149,8 @@ router.post("/login", async (req, res) => {
             name: user.name,
             email: user.email,
             role: user.role,
+            isCollegeVerified: user.isCollegeVerified,  // ✅ Send to frontend
+            collegeName: user.collegeName
           },
         });
       }

@@ -1,11 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext'; // ✅ ADDED
 import { ImageUpload } from '../components/ImageUpload';
 import ReportCard from '../components/ReportCard';
 import { 
   FiFileText, FiAlertTriangle, FiCheckCircle, FiClock, 
   FiEdit2, FiTrash2, FiPlus, FiArrowLeft, FiFilter, FiSearch,
-  FiTool, FiCheck, FiX, FiAward
+  FiTool, FiCheck, FiX, FiAward,
+  FiArrowRight, // ✅ ADDED - was missing!
+  FiUpload      // ✅ ADDED - was missing!
 } from 'react-icons/fi';
 
 interface Image {
@@ -48,10 +51,12 @@ interface Report {
 
 export default function MyReports() {
   const API = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+  const { token } = useAuth(); // ✅ ADDED - get token from context
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [activeFilter, setActiveFilter] = useState('all');
+  const [searchQuery, setSearchQuery] = useState(''); // ✅ ADDED - for search functionality
   const [editingReport, setEditingReport] = useState<Report | null>(null);
   const [editFormData, setEditFormData] = useState({
     accommodationName: '',
@@ -63,24 +68,29 @@ export default function MyReports() {
   const [currentUserId, setCurrentUserId] = useState<string>('');
   const navigate = useNavigate();
 
+  // ✅ FIXED: Extract user ID with token dependency
   useEffect(() => {
+    if (!token) {
+      setCurrentUserId('');
+      return;
+    }
+    
     try {
-      const token = localStorage.getItem('token');
-      if (token) {
-        const payload = JSON.parse(atob(token.split('.')[1]));
-        setCurrentUserId(payload.user?.id || payload.id || payload.userId || '');
-      }
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      setCurrentUserId(payload.user?.id || payload.id || payload.userId || '');
     } catch {
       setCurrentUserId('');
     }
-  }, []);
+  }, [token]); // ✅ Re-run when token changes
 
+  // ✅ FIXED: Fetch reports when token is available
   useEffect(() => {
-    fetchMyReports();
-  }, [API]);
+    if (token) {
+      fetchMyReports();
+    }
+  }, [token, API]); // ✅ Added token dependency
 
   const fetchMyReports = async () => {
-    const token = localStorage.getItem('token');
     if (!token) {
       setError('Please login to view your reports');
       setLoading(false);
@@ -89,15 +99,16 @@ export default function MyReports() {
     }
 
     try {
+      setLoading(true);
       const response = await fetch(`${API}/api/reports/my-reports`, {
         headers: {
-          'Authorization': `Bearer ${token}`,
+          'Authorization': `Bearer ${token}`, // ✅ Use token from context
           'Content-Type': 'application/json'
         }
       });
       const data = await response.json();
       if (data.success) {
-        setReports(data.data);
+        setReports(data.data || data.reports || []);
       } else {
         setError(data.message || 'Failed to fetch reports');
       }
@@ -128,8 +139,7 @@ export default function MyReports() {
 
   const handleUpdateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingReport) return;
-    const token = localStorage.getItem('token');
+    if (!editingReport || !token) return;
     setEditLoading(true);
 
     try {
@@ -160,7 +170,8 @@ export default function MyReports() {
 
   const handleDelete = async (reportId: string) => {
     if (!window.confirm('Delete this report? This cannot be undone.')) return;
-    const token = localStorage.getItem('token');
+    if (!token) return;
+    
     try {
       const response = await fetch(`${API}/api/reports/${reportId}`, {
         method: 'DELETE',
@@ -176,7 +187,8 @@ export default function MyReports() {
   };
 
   const handleVerify = async (id: string, accepted: boolean, feedbackOrReason: string) => {
-    const token = localStorage.getItem('token');
+    if (!token) return;
+    
     try {
       const response = await fetch(`${API}/api/reports/${id}/verify`, {
         method: 'PUT',
@@ -199,14 +211,25 @@ export default function MyReports() {
     }
   };
 
+  // ✅ FIXED: Filter with search functionality
   const filteredReports = reports.filter(r => {
-    if (activeFilter === 'all') return true;
-    if (activeFilter === 'pending') return r.status === 'pending';
-    if (activeFilter === 'approved') return r.status === 'approved';
-    if (activeFilter === 'resolved') return r.status === 'resolved';
-    if (activeFilter === 'verified') return r.status === 'verified';
-    if (activeFilter === 'disputed') return r.status === 'disputed';
-    return true;
+    // Status filter
+    const statusMatch = 
+      activeFilter === 'all' ? true :
+      activeFilter === 'pending' ? r.status === 'pending' :
+      activeFilter === 'approved' ? r.status === 'approved' :
+      activeFilter === 'resolved' ? r.status === 'resolved' :
+      activeFilter === 'verified' ? r.status === 'verified' :
+      activeFilter === 'disputed' ? r.status === 'disputed' :
+      true;
+    
+    // Search filter
+    const searchMatch = searchQuery === '' ? true :
+      r.accommodationName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      r.issueType.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      r.description.toLowerCase().includes(searchQuery.toLowerCase());
+    
+    return statusMatch && searchMatch;
   });
 
   const stats = [
@@ -216,9 +239,35 @@ export default function MyReports() {
     { label: 'Issues Verified', value: reports.filter(r => r.status === 'verified').length, icon: <FiCheckCircle />, color: 'text-green-600', bg: 'bg-green-50' },
   ];
 
+  // ✅ Show loading while waiting for token
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      <div className="flex flex-col items-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <p className="mt-4 text-gray-600 font-medium">Loading your reports...</p>
+      </div>
+    </div>
+  );
+
+  // ✅ Show error state
+  if (error) return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+      <div className="max-w-md w-full bg-white p-8 rounded-2xl shadow-xl text-center">
+        <div className="bg-red-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+          <FiAlertTriangle className="h-8 w-8 text-red-600" />
+        </div>
+        <h2 className="text-2xl font-bold text-gray-900 mb-2">Error Loading Reports</h2>
+        <p className="text-gray-600 mb-6">{error}</p>
+        <button 
+          onClick={() => {
+            setError('');
+            if (token) fetchMyReports();
+          }}
+          className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-all"
+        >
+          Try Again
+        </button>
+      </div>
     </div>
   );
 
@@ -301,6 +350,8 @@ export default function MyReports() {
               <input 
                 type="text" 
                 placeholder="Search your reports..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all outline-none text-sm font-bold text-gray-700"
               />
             </div>
@@ -313,16 +364,36 @@ export default function MyReports() {
             <div className="w-24 h-24 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-8">
               <FiFileText className="text-gray-300 text-4xl" />
             </div>
-            <h3 className="text-2xl font-black text-slate-900 mb-2">You haven't filed any reports yet</h3>
+            <h3 className="text-2xl font-black text-slate-900 mb-2">
+              {reports.length === 0 
+                ? "You haven't filed any reports yet" 
+                : "No reports match your filters"
+              }
+            </h3>
             <p className="text-slate-500 font-medium mb-10 max-w-sm mx-auto px-4">
-              Spotted a safety issue? Your voice matters! Your contributions can protect thousands of other students.
+              {reports.length === 0 
+                ? "Spotted a safety issue? Your voice matters! Your contributions can protect thousands of other students."
+                : "Try adjusting your filters or search query."
+              }
             </p>
-            <Link 
-              to="/report" 
-              className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-10 py-4 rounded-2xl font-black shadow-xl shadow-blue-500/25 hover:shadow-2xl transition-all inline-flex items-center gap-2"
-            >
-              Report an Issue <FiArrowRight />
-            </Link>
+            {reports.length === 0 ? (
+              <Link 
+                to="/report" 
+                className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-10 py-4 rounded-2xl font-black shadow-xl shadow-blue-500/25 hover:shadow-2xl transition-all inline-flex items-center gap-2"
+              >
+                Report an Issue <FiArrowRight />
+              </Link>
+            ) : (
+              <button 
+                onClick={() => {
+                  setActiveFilter('all');
+                  setSearchQuery('');
+                }}
+                className="bg-gray-100 text-gray-700 px-10 py-4 rounded-2xl font-black hover:bg-gray-200 transition-all inline-flex items-center gap-2"
+              >
+                Clear Filters <FiX />
+              </button>
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 lg:gap-10">
