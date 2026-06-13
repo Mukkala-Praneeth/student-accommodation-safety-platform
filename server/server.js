@@ -48,12 +48,10 @@ const app = express();
 // SECURITY & MIDDLEWARE
 // ============================================================
 
-// Security headers
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
 
-// CORS configuration
 app.use(cors({
   origin: function(origin, callback) {
     const allowedOrigins = [
@@ -123,12 +121,10 @@ app.post('/api/upload', authMiddleware, upload.array('images', 5), (req, res) =>
       return res.status(400).json({ success: false, message: 'No files uploaded' });
     }
 
-    const uploadedImages = req.files.map(file => {
-      return {
-        url: file.path,
-        publicId: file.filename
-      };
-    });
+    const uploadedImages = req.files.map(file => ({
+      url: file.path,
+      publicId: file.filename
+    }));
 
     res.json({
       success: true,
@@ -161,7 +157,7 @@ app.delete('/api/upload/:publicId', authMiddleware, async (req, res) => {
 // REPORT ROUTES
 // ============================================================
 
-// Get user's reports
+// Get user's reports (paginated)
 app.get('/api/reports/my-reports', authMiddleware, async (req, res) => {
   try {
     let page = parseInt(req.query.page) || 1;
@@ -222,111 +218,158 @@ app.get('/api/reports', async (req, res) => {
   }
 });
 
-// ✅ POST new report — WITH VERIFICATION CHECK & AI VERIFICATION
+// ✅ POST new report — ONLY COLLEGE VERIFIED STUDENTS + AI VERIFICATION
 app.post('/api/reports', authMiddleware, async (req, res) => {
   try {
-    // ✅ STEP 1: Get user and check verification
-    const user = await User.findById(req.user.id).select('role isCollegeVerified isVerified collegeName name email isBanned');
+    // ========================================
+    // STEP 1: GET USER AND VERIFY
+    // ========================================
+    const user = await User.findById(req.user.id);
     
     if (!user) {
+      console.log('[Report] ❌ User not found:', req.user.id);
       return res.status(404).json({ 
         success: false, 
         message: 'User not found' 
       });
     }
 
-    // ✅ STEP 2: Check if user is banned
-    if (user.isBanned) {
+    // Debug logging
+    console.log('========================================');
+    console.log('[Report] User:', user.email);
+    console.log('[Report] Role:', user.role);
+    console.log('[Report] isCollegeVerified:', user.isCollegeVerified);
+    console.log('[Report] collegeName:', user.collegeName);
+    console.log('[Report] isBanned:', user.isBanned);
+    console.log('========================================');
+
+    // Check if banned
+    if (user.isBanned === true) {
+      console.log('[Report] ❌ BLOCKED - User is banned');
       return res.status(403).json({ 
         success: false, 
         message: 'Your account has been suspended. Please contact support.' 
       });
     }
 
-    // ✅ STEP 3: Only students can submit reports
+    // Check if student
     if (user.role !== 'student') {
+      console.log('[Report] ❌ BLOCKED - Not a student, role:', user.role);
       return res.status(403).json({ 
         success: false, 
         message: 'Only students can submit safety reports' 
       });
     }
 
-    // ✅ STEP 4: Student must be verified (college verified OR email verified)
-    const isVerified = user.isCollegeVerified || user.isVerified;
-    
-    if (!isVerified) {
+    // ========================================
+    // ✅ CRITICAL: CHECK COLLEGE VERIFICATION ONLY
+    // ========================================
+    const isCollegeVerified = user.isCollegeVerified === true;
+
+    console.log('[Report] College Verified:', isCollegeVerified);
+
+    if (!isCollegeVerified) {
+      console.log('[Report] ❌ BLOCKED - College not verified');
       return res.status(403).json({ 
         success: false, 
-        message: 'Please verify your college email before submitting reports. This helps ensure authentic reviews.',
+        message: 'Please verify your college email before submitting reports. Only verified college students can report safety issues.',
         requiresVerification: true,
+        requiresCollegeVerification: true,
         userEmail: user.email
       });
     }
 
-    // ✅ STEP 5: Proceed with existing validation
+    console.log('[Report] ✅ College verified, proceeding...');
+
+    // ========================================
+    // STEP 2: VALIDATE REQUEST DATA
+    // ========================================
     const { accommodation, accommodationName, issueType, description, images } = req.body;
 
-    // Must have either accommodation ID or name
     if (!accommodation && (!accommodationName || !accommodationName.trim())) {
-      return res.status(400).json({ success: false, message: 'Please select or enter an accommodation name' });
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Please select or enter an accommodation name' 
+      });
     }
 
     if (!issueType || !issueType.trim()) {
-      return res.status(400).json({ success: false, message: 'Issue type is required' });
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Issue type is required' 
+      });
     }
 
     if (!description || !description.trim()) {
-      return res.status(400).json({ success: false, message: 'Description is required' });
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Description is required' 
+      });
     }
 
     const validIssueTypes = ['Food Safety', 'Water Quality', 'Hygiene', 'Security', 'Infrastructure'];
     if (!validIssueTypes.includes(issueType)) {
-      return res.status(400).json({ success: false, message: 'Invalid issue type' });
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Invalid issue type' 
+      });
     }
 
     if (description.length > 2000) {
-      return res.status(400).json({ success: false, message: 'Description cannot exceed 2000 characters' });
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Description cannot exceed 2000 characters' 
+      });
     }
 
-    // Validate and filter images
+    // Validate images
     let validatedImages = [];
     if (images && Array.isArray(images)) {
       validatedImages = images.filter(img => img && img.url && img.publicId);
     }
 
-    // Resolve accommodation
+    // ========================================
+    // STEP 3: RESOLVE ACCOMMODATION
+    // ========================================
     let accommodationId = null;
     let resolvedAccommodationName = accommodationName || '';
 
     if (accommodation) {
       if (!mongoose.Types.ObjectId.isValid(accommodation)) {
-        return res.status(400).json({ success: false, message: 'Invalid accommodation ID' });
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Invalid accommodation ID' 
+        });
       }
       const accommodationDoc = await Accommodation.findById(accommodation);
       if (!accommodationDoc) {
-        return res.status(404).json({ success: false, message: 'Selected accommodation not found. Please choose a registered accommodation.' });
+        return res.status(404).json({ 
+          success: false, 
+          message: 'Selected accommodation not found. Please choose a registered accommodation.' 
+        });
       }
       accommodationId = accommodationDoc._id;
       resolvedAccommodationName = accommodationDoc.name;
     }
 
-    // ✅ AI VERIFICATION — Run if images are provided and module is available
+    // ========================================
+    // STEP 4: AI VERIFICATION
+    // ========================================
     let aiVerificationData = null;
     let autoStatus = 'pending';
 
     if (verifyReportImage && validatedImages.length > 0 && validatedImages[0].url) {
       try {
-        console.log('[Report Submission] Running AI verification...');
-        console.log('[Report Submission] User:', user.name, '(Verified:', isVerified ? 'Yes' : 'No', ')');
-        console.log('[Report Submission] Image URL:', validatedImages[0].url);
-        console.log('[Report Submission] Issue Type:', issueType);
+        console.log('[Report] Running AI verification...');
+        console.log('[Report] User:', user.name, '| College:', user.collegeName);
+        console.log('[Report] Image URL:', validatedImages[0].url);
+        console.log('[Report] Issue Type:', issueType);
         
         const aiResult = await verifyReportImage(validatedImages[0].url, issueType);
         
-        console.log('[Report Submission] AI Verdict:', aiResult.verdict);
-        console.log('[Report Submission] AI Confidence:', aiResult.confidence);
+        console.log('[Report] AI Verdict:', aiResult.verdict);
+        console.log('[Report] AI Confidence:', aiResult.confidence);
 
-        // Store AI verification data
         aiVerificationData = {
           verdict: aiResult.verdict,
           severity: aiResult.severity,
@@ -337,20 +380,19 @@ app.post('/api/reports', authMiddleware, async (req, res) => {
           timestamp: new Date()
         };
 
-        // ✅ Auto-reject if AI says image is clearly irrelevant with high confidence
+        // Auto-reject if AI says image is clearly irrelevant
         if (aiResult.verdict === 'REJECTED' && aiResult.confidence >= 0.7) {
           autoStatus = 'rejected';
-          console.log('[Report Submission] Auto-rejected by AI');
+          console.log('[Report] Auto-rejected by AI');
         }
 
-        // ✅ Mark for admin review if AI is unsure or detects high severity
+        // Mark for admin review if AI is unsure or high severity
         if (aiResult.verdict === 'NEEDS_REVIEW' || aiResult.severity === 'high') {
           aiVerificationData.recommendAdminReview = true;
         }
 
       } catch (aiError) {
-        console.error('[Report Submission] AI Verification Error:', aiError.message);
-        // Don't block report submission if AI fails
+        console.error('[Report] AI Verification Error:', aiError.message);
         aiVerificationData = {
           verdict: 'NEEDS_REVIEW',
           severity: 'unknown',
@@ -362,12 +404,14 @@ app.post('/api/reports', authMiddleware, async (req, res) => {
         };
       }
     } else if (!verifyReportImage) {
-      console.log('[Report Submission] AI verification not available, skipping...');
+      console.log('[Report] AI verification not available, skipping...');
     } else {
-      console.log('[Report Submission] No images provided, skipping AI verification');
+      console.log('[Report] No images provided, skipping AI verification');
     }
 
-    // Create report
+    // ========================================
+    // STEP 5: CREATE REPORT
+    // ========================================
     const newReport = new Report({
       accommodationName: resolvedAccommodationName,
       accommodation: accommodationId,
@@ -381,12 +425,12 @@ app.post('/api/reports', authMiddleware, async (req, res) => {
 
     const saved = await newReport.save();
 
-    // Update trust score if linked to accommodation and not rejected
+    // Update trust score
     if (accommodationId && autoStatus !== 'rejected') {
       await updateAccommodationScore(Accommodation, Report, accommodationId);
     }
 
-    // ✅ Build response message
+    // Build response message
     let responseMessage = 'Report submitted successfully';
     if (autoStatus === 'rejected') {
       responseMessage = 'Report submitted but flagged by AI as potentially irrelevant. Admin will review.';
@@ -396,7 +440,7 @@ app.post('/api/reports', authMiddleware, async (req, res) => {
       responseMessage = 'Report submitted and verified by AI. Awaiting final approval.';
     }
 
-    console.log(`[Report Submission] Success - User: ${user.name}, Status: ${autoStatus}, AI: ${aiVerificationData?.verdict || 'N/A'}`);
+    console.log(`[Report] ✅ Success - User: ${user.name} (${user.collegeName}), Status: ${autoStatus}, AI: ${aiVerificationData?.verdict || 'N/A'}`);
 
     res.status(201).json({
       success: true,
@@ -410,7 +454,7 @@ app.post('/api/reports', authMiddleware, async (req, res) => {
       } : null
     });
   } catch (error) {
-    console.error('SAVE ERROR:', error);
+    console.error('[Report] ❌ SAVE ERROR:', error);
     res.status(500).json({
       success: false,
       message: 'Error saving report',
@@ -439,7 +483,6 @@ app.put('/api/reports/:id', authMiddleware, async (req, res) => {
       return res.status(403).json({ success: false, message: 'You can only edit your own reports' });
     }
 
-    // If accommodation ID provided, validate and resolve
     if (accommodation) {
       if (!mongoose.Types.ObjectId.isValid(accommodation)) {
         return res.status(400).json({ success: false, message: 'Invalid accommodation ID' });
@@ -458,7 +501,7 @@ app.put('/api/reports/:id', authMiddleware, async (req, res) => {
     if (description) report.description = description;
     if (images !== undefined) report.images = images;
 
-    // ✅ Re-run AI verification if images changed
+    // Re-run AI verification if images changed
     if (images !== undefined && verifyReportImage && images.length > 0 && images[0].url) {
       try {
         console.log('[Report Update] Re-running AI verification...');
@@ -474,7 +517,6 @@ app.put('/api/reports/:id', authMiddleware, async (req, res) => {
           timestamp: new Date()
         };
 
-        // Reset to pending for re-review
         report.status = 'pending';
       } catch (aiError) {
         console.error('[Report Update] AI Verification Error:', aiError.message);
@@ -483,7 +525,6 @@ app.put('/api/reports/:id', authMiddleware, async (req, res) => {
 
     const updated = await report.save();
 
-    // Recalculate trust score
     if (report.accommodation) {
       await updateAccommodationScore(Accommodation, Report, report.accommodation);
     }
@@ -545,7 +586,6 @@ app.post('/api/reports/:id/upvote', authMiddleware, async (req, res) => {
     }
 
     const userId = req.user.id;
-
     const report = await Report.findById(reportId);
 
     if (!report) {
@@ -689,13 +729,7 @@ app.post('/api/test-ai-verification', authMiddleware, async (req, res) => {
       });
     }
 
-    console.log('[AI Test] Starting verification...');
-    console.log('[AI Test] Image URL:', imageUrl);
-    console.log('[AI Test] Issue Type:', issueType);
-
     const result = await verifyReportImage(imageUrl, issueType);
-
-    console.log('[AI Test] Result:', result.verdict);
 
     res.json({
       success: true,
@@ -722,8 +756,15 @@ app.get('/api/admin/stats', authMiddleware, adminMiddleware, async (req, res) =>
     const totalAccommodations = await Accommodation.countDocuments();
     const totalReports = await Report.countDocuments();
     const pendingReports = await Report.countDocuments({ status: 'pending' });
+    const collegeVerifiedStudents = await User.countDocuments({ role: 'student', isCollegeVerified: true });
+    const totalStudents = await User.countDocuments({ role: 'student' });
+    
+    // ✅ Owner verification stats
+    const pendingOwners = await User.countDocuments({ role: 'owner', ownerVerificationStatus: 'pending' });
+    const verifiedOwners = await User.countDocuments({ role: 'owner', ownerVerificationStatus: 'verified' });
+    const rejectedOwners = await User.countDocuments({ role: 'owner', ownerVerificationStatus: 'rejected' });
 
-    // ✅ AI Verification Statistics
+    // AI Verification Statistics
     const aiStats = await Report.aggregate([
       {
         $facet: {
@@ -760,6 +801,16 @@ app.get('/api/admin/stats', authMiddleware, adminMiddleware, async (req, res) =>
         totalAccommodations,
         totalReports,
         pendingReports,
+        collegeVerifiedStudents,
+        totalStudents,
+        verificationRate: totalStudents > 0 ? Math.round((collegeVerifiedStudents / totalStudents) * 100) : 0,
+        // ✅ Owner verification stats
+        ownerStats: {
+          pending: pendingOwners,
+          verified: verifiedOwners,
+          rejected: rejectedOwners,
+          total: pendingOwners + verifiedOwners + rejectedOwners
+        },
         aiStats: {
           totalWithAI: aiStatsData.total[0]?.count || 0,
           verified: aiStatsData.verified[0]?.count || 0,
@@ -782,7 +833,6 @@ app.get('/api/admin/reports', authMiddleware, adminMiddleware, async (req, res) 
 
     let query = {};
 
-    // Filter by AI verdict
     if (aiFilter === 'needs-review') {
       query['aiVerification.recommendAdminReview'] = true;
     } else if (aiFilter === 'ai-verified') {
@@ -791,21 +841,19 @@ app.get('/api/admin/reports', authMiddleware, adminMiddleware, async (req, res) 
       query['aiVerification.verdict'] = 'REJECTED';
     }
 
-    // Filter by status
     if (status && status !== 'all') {
       query.status = status;
     }
 
     const reports = await Report.find(query)
-      .populate('user', 'name email isCollegeVerified collegeName')
+      .populate('user', 'name email isCollegeVerified collegeName isVerified')
       .populate('accommodation', 'name address city')
       .populate('resolution.resolvedBy', 'name email')
       .sort({ createdAt: -1 })
       .lean();
 
-    // ✅ Transform reports to match frontend expectations
+    // Transform reports to match frontend expectations
     const transformedReports = reports.map(report => {
-      // Handle user data
       let userData = null;
       if (report.user && typeof report.user === 'object') {
         userData = {
@@ -813,11 +861,11 @@ app.get('/api/admin/reports', authMiddleware, adminMiddleware, async (req, res) 
           name: report.user.name || 'Unknown',
           email: report.user.email || 'N/A',
           isCollegeVerified: report.user.isCollegeVerified || false,
+          isVerified: report.user.isVerified || false,
           collegeName: report.user.collegeName || null
         };
       }
 
-      // Handle accommodation data
       let accommodationData = null;
       if (report.accommodation && typeof report.accommodation === 'object') {
         accommodationData = {
@@ -1099,57 +1147,206 @@ app.get('/api/admin/ai-performance', authMiddleware, adminMiddleware, async (req
 });
 
 // ============================================================
-// OWNER ROUTES
+// OWNER VERIFICATION ROUTES (NEW!)
 // ============================================================
 
-// Register owner
-app.post('/api/auth/register-owner', async (req, res) => {
+// Get pending owners (Admin only)
+app.get('/api/admin/pending-owners', authMiddleware, adminMiddleware, async (req, res) => {
   try {
-    const { name, email, password, phone } = req.body;
+    const pendingOwners = await User.find({
+      role: 'owner',
+      ownerVerificationStatus: { $in: ['pending', 'under_review'] }
+    })
+    .select('-password')
+    .sort({ verificationSubmittedAt: -1 })
+    .lean();
 
-    const existingUser = await User.findOne({ email }).select('-password');
-    if (existingUser) {
-      return res.status(400).json({ success: false, message: 'Email already registered' });
+    console.log(`[Admin] Found ${pendingOwners.length} pending owners`);
+
+    res.json({
+      success: true,
+      data: pendingOwners
+    });
+  } catch (error) {
+    console.error('Get pending owners error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching pending owners',
+      error: error.message
+    });
+  }
+});
+
+// Approve owner verification (Admin only)
+app.put('/api/admin/verify-owner/:id', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid owner ID'
+      });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const owner = await User.findById(id);
 
-    const newUser = new User({
-      name,
-      email,
-      password: hashedPassword,
-      role: 'owner',
-      phone
-    });
+    if (!owner) {
+      return res.status(404).json({
+        success: false,
+        message: 'Owner not found'
+      });
+    }
 
-    await newUser.save();
+    if (owner.role !== 'owner') {
+      return res.status(400).json({
+        success: false,
+        message: 'User is not an owner'
+      });
+    }
 
-    const payload = {
-      user: {
-        id: newUser.id,
-        name: newUser.name,
-        email: newUser.email,
-        role: newUser.role
-      }
-    };
+    // Update verification status
+    owner.ownerVerificationStatus = 'verified';
+    owner.isVerified = true;
+    owner.verificationReviewedAt = new Date();
+    owner.verifiedBy = req.user.id;
+    owner.rejectionReason = null;
 
-    const token = jwt.sign(payload, process.env.JWT_SECRET || 'default_secret', { expiresIn: '7d' });
+    await owner.save();
 
-    res.status(201).json({
+    console.log(`✅ [Admin] Owner ${owner.email} verified by admin ${req.user.id}`);
+
+    res.json({
       success: true,
-      message: 'Owner registered successfully',
-      token,
-      user: {
-        id: newUser.id,
-        name: newUser.name,
-        email: newUser.email,
-        role: newUser.role
+      message: 'Owner verification approved successfully',
+      data: {
+        id: owner.id,
+        name: owner.name,
+        email: owner.email,
+        ownerVerificationStatus: owner.ownerVerificationStatus,
+        verificationReviewedAt: owner.verificationReviewedAt
       }
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Error registering owner', error: error.message });
+    console.error('Verify owner error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error verifying owner',
+      error: error.message
+    });
   }
 });
+
+// Reject owner verification (Admin only)
+app.put('/api/admin/reject-owner/:id', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { rejectionReason } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid owner ID'
+      });
+    }
+
+    if (!rejectionReason || !rejectionReason.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Rejection reason is required'
+      });
+    }
+
+    const owner = await User.findById(id);
+
+    if (!owner) {
+      return res.status(404).json({
+        success: false,
+        message: 'Owner not found'
+      });
+    }
+
+    if (owner.role !== 'owner') {
+      return res.status(400).json({
+        success: false,
+        message: 'User is not an owner'
+      });
+    }
+
+    // Update verification status
+    owner.ownerVerificationStatus = 'rejected';
+    owner.isVerified = false;
+    owner.verificationReviewedAt = new Date();
+    owner.verifiedBy = req.user.id;
+    owner.rejectionReason = rejectionReason.trim();
+
+    await owner.save();
+
+    console.log(`❌ [Admin] Owner ${owner.email} rejected: ${rejectionReason}`);
+
+    res.json({
+      success: true,
+      message: 'Owner verification rejected',
+      data: {
+        id: owner.id,
+        name: owner.name,
+        email: owner.email,
+        ownerVerificationStatus: owner.ownerVerificationStatus,
+        rejectionReason: owner.rejectionReason,
+        verificationReviewedAt: owner.verificationReviewedAt
+      }
+    });
+  } catch (error) {
+    console.error('Reject owner error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error rejecting owner',
+      error: error.message
+    });
+  }
+});
+
+// Get owner verification status (Owner can check their own status)
+app.get('/api/owner/verification-status', authMiddleware, ownerMiddleware, async (req, res) => {
+  try {
+    const owner = await User.findById(req.user.id)
+      .select('ownerVerificationStatus verificationSubmittedAt verificationReviewedAt rejectionReason verificationDocuments')
+      .lean();
+
+    if (!owner) {
+      return res.status(404).json({
+        success: false,
+        message: 'Owner not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        status: owner.ownerVerificationStatus,
+        submittedAt: owner.verificationSubmittedAt,
+        reviewedAt: owner.verificationReviewedAt,
+        rejectionReason: owner.rejectionReason,
+        documentsUploaded: {
+          governmentId: !!owner.verificationDocuments?.governmentId?.url,
+          propertyProof: !!owner.verificationDocuments?.propertyProof?.url,
+          businessRegistration: !!owner.verificationDocuments?.businessRegistration?.url
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Get verification status error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching verification status',
+      error: error.message
+    });
+  }
+});
+
+// ============================================================
+// OWNER ROUTES
+// ============================================================
 
 // Owner stats
 app.get('/api/owner/stats', authMiddleware, ownerMiddleware, async (req, res) => {
@@ -1741,6 +1938,111 @@ app.post('/api/otp/verify-email', async (req, res) => {
   }
 });
 
+// ✅ College Verification OTP
+app.post('/api/otp/send-college-verification', authMiddleware, async (req, res) => {
+  try {
+    const { collegeEmail, collegeName } = req.body;
+
+    if (!collegeEmail || !collegeEmail.trim()) {
+      return res.status(400).json({ success: false, message: 'College email is required' });
+    }
+
+    if (!collegeName || !collegeName.trim()) {
+      return res.status(400).json({ success: false, message: 'College name is required' });
+    }
+
+    const normalizedEmail = collegeEmail.toLowerCase().trim();
+
+    // Check if already college verified
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    if (user.isCollegeVerified) {
+      return res.status(400).json({ success: false, message: 'College email already verified' });
+    }
+
+    await OTP.deleteMany({ email: normalizedEmail, type: 'college-verification' });
+
+    const otp = generateOTP();
+    const otpDoc = new OTP({
+      email: normalizedEmail,
+      otp,
+      type: 'college-verification',
+      expiresAt: new Date(Date.now() + 10 * 60 * 1000)
+    });
+
+    await otpDoc.save();
+
+    const emailResult = await sendOTPEmail(normalizedEmail, otp, 'college-verification');
+
+    if (!emailResult.success) {
+      return res.status(500).json({ success: false, message: 'Failed to send OTP to college email' });
+    }
+
+    // Store college name temporarily
+    await User.findByIdAndUpdate(req.user.id, { collegeName: collegeName.trim() });
+
+    res.json({ success: true, message: 'Verification OTP sent to your college email' });
+  } catch (error) {
+    console.error('SEND COLLEGE OTP ERROR:', error.message);
+    res.status(500).json({ success: false, message: 'Error sending college verification OTP' });
+  }
+});
+
+// ✅ Verify College Email
+app.post('/api/otp/verify-college', authMiddleware, async (req, res) => {
+  try {
+    const { collegeEmail, otp } = req.body;
+
+    if (!collegeEmail || !otp) {
+      return res.status(400).json({ success: false, message: 'College email and OTP are required' });
+    }
+
+    const normalizedEmail = collegeEmail.toLowerCase().trim();
+
+    const otpDoc = await OTP.findOne({
+      email: normalizedEmail,
+      type: 'college-verification',
+      expiresAt: { $gt: new Date() }
+    });
+
+    if (!otpDoc) {
+      return res.status(400).json({ success: false, message: 'OTP expired or invalid. Please request a new one.' });
+    }
+
+    if (otpDoc.otp !== otp.trim()) {
+      return res.status(400).json({ success: false, message: 'Incorrect OTP. Please try again.' });
+    }
+
+    // Update user as college verified
+    const updatedUser = await User.findByIdAndUpdate(
+      req.user.id,
+      { 
+        isCollegeVerified: true
+      },
+      { new: true }
+    ).select('-password');
+
+    await OTP.deleteMany({ email: normalizedEmail, type: 'college-verification' });
+
+    console.log(`[College Verification] ✅ User ${updatedUser.email} college verified: ${updatedUser.collegeName}`);
+
+    res.json({ 
+      success: true, 
+      message: 'College email verified successfully! You can now submit safety reports.',
+      data: {
+        isCollegeVerified: true,
+        collegeName: updatedUser.collegeName
+      }
+    });
+  } catch (error) {
+    console.error('VERIFY COLLEGE ERROR:', error.message);
+    res.status(500).json({ success: false, message: 'Error verifying college email' });
+  }
+});
+
 app.post('/api/otp/forgot-password', async (req, res) => {
   try {
     const { email } = req.body;
@@ -1828,6 +2130,7 @@ app.post('/api/otp/reset-password', async (req, res) => {
 
 // Apply rate limiting to OTP routes
 app.use('/api/otp/send-verification', authLimiter);
+app.use('/api/otp/send-college-verification', authLimiter);
 app.use('/api/otp/forgot-password', authLimiter);
 
 // ============================================================
@@ -1884,13 +2187,9 @@ app.get('/api/accommodations/dropdown', async (req, res) => {
 
 app.get('/api/accommodations/with-location', async (req, res) => {
   try {
-    console.log('=== FETCHING ACCOMMODATIONS WITH LOCATION ===');
-
     const allAccommodations = await Accommodation.find({})
       .select('_id name address city latitude longitude trustScore trustScoreLabel totalReports type')
       .lean();
-
-    console.log('Total accommodations in DB:', allAccommodations.length);
 
     if (allAccommodations.length === 0) {
       return res.json({ success: true, data: [], message: 'No accommodations registered yet' });
@@ -1901,8 +2200,6 @@ app.get('/api/accommodations/with-location', async (req, res) => {
       const lng = parseFloat(acc.longitude);
       return !isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0;
     });
-
-    console.log('With valid location:', withValidLocation.length);
 
     const normalizedData = withValidLocation.map(acc => ({
       ...acc,
@@ -1974,7 +2271,6 @@ app.post('/api/accommodations/:id/recalculate-score', authMiddleware, async (req
 // ERROR HANDLERS
 // ============================================================
 
-// 404 handler
 app.use((req, res) => {
   res.status(404).json({
     success: false,
@@ -1982,7 +2278,6 @@ app.use((req, res) => {
   });
 });
 
-// Global error handler
 app.use((err, req, res, next) => {
   console.error('UNHANDLED ERROR:', err.message);
   console.error(err.stack);
@@ -2023,8 +2318,10 @@ mongoose.connect(process.env.MONGO_URI)
       if (verifyReportImage) {
         console.log('🤖 AI Verification: Enabled');
       } else {
-        console.log('⚠️  AI Verification: Disabled (check API keys)');
+        console.log('⚠️  AI Verification: Disabled');
       }
+      console.log('🎓 College verification required for reporting: Enabled');
+      console.log('✅ Owner verification system: Active');
     });
   })
   .catch(err => console.error("❌ MongoDB connection error:", err));

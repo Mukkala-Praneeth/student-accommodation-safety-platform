@@ -5,6 +5,12 @@ import {
   FiMap, FiList, FiGrid, FiArrowRight, FiCheckCircle, FiAlertCircle, FiXCircle, FiHome, FiTool
 } from 'react-icons/fi';
 import AccommodationMap from '../components/AccommodationMap';
+import { 
+  ScrollReveal, 
+  StaggerReveal, 
+  FadeIn,
+  ScaleIn 
+} from '../components/ParallaxEffect';
 
 export const AccommodationList: React.FC = () => {
   const API = import.meta.env.VITE_API_URL || 'http://localhost:5000';
@@ -82,133 +88,155 @@ export const AccommodationList: React.FC = () => {
       {/* Header Section */}
       <div className="bg-gradient-to-br from-slate-900 via-blue-900 to-indigo-900 py-16 lg:py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h1 className="text-4xl lg:text-5xl font-extrabold text-white">
-            Find Safe Accommodations
-          </h1>
-          <p className="mt-4 text-lg text-blue-200 max-w-2xl">
-            Search verified properties with transparent safety ratings and real student feedback.
-          </p>
+          <ScrollReveal delay={0} distance={30}>
+            <h1 className="text-4xl lg:text-5xl font-extrabold text-white">
+              Find Safe Accommodations
+            </h1>
+          </ScrollReveal>
+          <ScrollReveal delay={100} distance={20}>
+            <p className="mt-4 text-lg text-blue-200 max-w-2xl">
+              Search verified properties with transparent safety ratings and real student feedback.
+            </p>
+          </ScrollReveal>
         </div>
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-10">
         {/* Search and Filters Card */}
-        <div className="bg-white rounded-3xl shadow-xl p-6 lg:p-8 mb-8 border border-gray-100 relative z-10">
-          <div className="flex flex-col lg:flex-row gap-6">
-            {/* Search Input */}
-            <div className="flex-grow relative">
-              <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 h-5 w-5" />
-              <input
-                type="text"
-                placeholder="Search by name, location, or city..."
-                className="w-full pl-12 pr-4 py-4 bg-gray-50 border border-gray-100 rounded-2xl focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all outline-none text-gray-700 placeholder-gray-400 font-medium"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
-
-            {/* Filter Pills & View Toggles */}
-            <div className="flex flex-wrap items-center gap-4">
-              <div className="flex gap-2 flex-wrap bg-gray-50 p-1 rounded-2xl border border-gray-100">
-                {[
-                  { id: 'all', label: 'All' },
-                  { id: 'safe', label: '🟢 Safe (80+)' },
-                  { id: 'caution', label: '🟡 Caution (50-79)' },
-                  { id: 'avoid', label: '🔴 Avoid (<50)' }
-                ].map(filter => (
-                  <button
-                    key={filter.id}
-                    onClick={() => setSelectedFilter(filter.id)}
-                    className={`px-4 py-2 rounded-xl text-sm font-bold transition-all duration-200 ${
-                      selectedFilter === filter.id
-                        ? 'bg-white text-blue-600 shadow-sm'
-                        : 'text-gray-500 hover:text-gray-700'
-                    }`}
-                  >
-                    {filter.label}
-                  </button>
-                ))}
+        <ScrollReveal delay={0} distance={40}>
+          <div className="bg-white rounded-3xl shadow-xl p-6 lg:p-8 mb-8 border border-gray-100 relative z-10">
+            <div className="flex flex-col lg:flex-row gap-6">
+              {/* Search Input */}
+              <div className="flex-grow relative">
+                <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 h-5 w-5" />
+                <input
+                  type="text"
+                  placeholder="Search by name, location, or city..."
+                  className="w-full pl-12 pr-4 py-4 bg-gray-50 border border-gray-100 rounded-2xl focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all outline-none text-gray-700 placeholder-gray-400 font-medium"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
               </div>
 
-              <div className="h-8 w-[1px] bg-gray-200 hidden lg:block mx-2"></div>
+              {/* Filter Pills & View Toggles */}
+              <div className="flex flex-wrap items-center gap-4">
+                <div className="flex gap-2 flex-wrap bg-gray-50 p-1 rounded-2xl border border-gray-100">
+                  <StaggerReveal stagger={50}>
+                    {[
+                      { id: 'all', label: 'All' },
+                      { id: 'safe', label: '🟢 Safe (80+)' },
+                      { id: 'caution', label: '🟡 Caution (50-79)' },
+                      { id: 'avoid', label: '🔴 Avoid (<50)' }
+                    ].map(filter => (
+                      <button
+                        key={filter.id}
+                        onClick={() => setSelectedFilter(filter.id)}
+                        className={`px-4 py-2 rounded-xl text-sm font-bold transition-all duration-200 ${
+                          selectedFilter === filter.id
+                            ? 'bg-white text-blue-600 shadow-sm'
+                            : 'text-gray-500 hover:text-gray-700'
+                        }`}
+                      >
+                        {filter.label}
+                      </button>
+                    ))}
+                  </StaggerReveal>
+                </div>
 
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setViewMode('grid')}
-                  className={`p-3 rounded-xl transition-all ${viewMode === 'grid' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/25' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}
-                  title="Grid View"
-                >
-                  <FiGrid className="h-5 w-5" />
-                </button>
-                <button
-                  onClick={() => setViewMode('list')}
-                  className={`p-3 rounded-xl transition-all ${viewMode === 'list' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/25' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}
-                  title="List View"
-                >
-                  <FiList className="h-5 w-5" />
-                </button>
-                <button
-                  onClick={() => setShowMap(!showMap)}
-                  className={`p-3 rounded-xl transition-all ${showMap ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/25' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}
-                  title="Map View"
-                >
-                  <FiMap className="h-5 w-5" />
-                </button>
+                <div className="h-8 w-[1px] bg-gray-200 hidden lg:block mx-2"></div>
+
+                <FadeIn delay={200}>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setViewMode('grid')}
+                      className={`p-3 rounded-xl transition-all ${viewMode === 'grid' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/25' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}
+                      title="Grid View"
+                    >
+                      <FiGrid className="h-5 w-5" />
+                    </button>
+                    <button
+                      onClick={() => setViewMode('list')}
+                      className={`p-3 rounded-xl transition-all ${viewMode === 'list' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/25' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}
+                      title="List View"
+                    >
+                      <FiList className="h-5 w-5" />
+                    </button>
+                    <button
+                      onClick={() => setShowMap(!showMap)}
+                      className={`p-3 rounded-xl transition-all ${showMap ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/25' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}
+                      title="Map View"
+                    >
+                      <FiMap className="h-5 w-5" />
+                    </button>
+                  </div>
+                </FadeIn>
               </div>
             </div>
-          </div>
 
-          <div className="mt-6 flex flex-wrap items-center justify-between gap-4 pt-6 border-t border-gray-50">
-            <p className="text-sm font-bold text-gray-500 uppercase tracking-widest">
-              Showing <span className="text-blue-600">{filteredAccommodations.length}</span> verified accommodations
-            </p>
+            <div className="mt-6 flex flex-wrap items-center justify-between gap-4 pt-6 border-t border-gray-50">
+              <FadeIn delay={100}>
+                <p className="text-sm font-bold text-gray-500 uppercase tracking-widest">
+                  Showing <span className="text-blue-600">{filteredAccommodations.length}</span> verified accommodations
+                </p>
+              </FadeIn>
+            </div>
           </div>
-        </div>
+        </ScrollReveal>
 
         {/* Map Section */}
         {showMap && (
-          <div className="mb-8 rounded-3xl shadow-xl border-4 border-white overflow-hidden h-[500px] animate-in fade-in duration-500">
-            <AccommodationMap />
-          </div>
+          <ScrollReveal delay={0} direction="down" distance={30}>
+            <div className="mb-8 rounded-3xl shadow-xl border-4 border-white overflow-hidden h-[500px]">
+              <AccommodationMap />
+            </div>
+          </ScrollReveal>
         )}
 
+        {/* Error Message */}
         {error && (
-          <div className="bg-red-50 border border-red-100 text-red-700 p-6 rounded-2xl mb-8 flex items-center justify-between animate-in fade-in">
-            <div className="flex items-center gap-3">
-              <FiAlertTriangle className="h-6 w-6 text-red-500" />
-              <p className="font-bold">{error}</p>
+          <ScaleIn delay={0} scale={0.95}>
+            <div className="bg-red-50 border border-red-100 text-red-700 p-6 rounded-2xl mb-8 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <FiAlertTriangle className="h-6 w-6 text-red-500" />
+                <p className="font-bold">{error}</p>
+              </div>
+              <button 
+                onClick={() => { setError(""); setLoading(true); fetchAccommodations(); }}
+                className="bg-white text-red-600 px-6 py-2 rounded-xl font-bold border border-red-200 hover:bg-red-50 transition-all"
+              >
+                Retry Search
+              </button>
             </div>
-            <button 
-              onClick={() => { setError(""); setLoading(true); fetchAccommodations(); }}
-              className="bg-white text-red-600 px-6 py-2 rounded-xl font-bold border border-red-200 hover:bg-red-50 transition-all"
-            >
-              Retry Search
-            </button>
-          </div>
+          </ScaleIn>
         )}
 
         {/* Results */}
         {filteredAccommodations.length === 0 ? (
-          <div className="text-center py-20 bg-white rounded-3xl shadow-sm border border-gray-100 max-w-2xl mx-auto">
-            <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-6">
-              <FiSearch className="text-gray-300 text-3xl" />
+          <ScaleIn delay={0} scale={0.9}>
+            <div className="text-center py-20 bg-white rounded-3xl shadow-sm border border-gray-100 max-w-2xl mx-auto">
+              <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-6">
+                <FiSearch className="text-gray-300 text-3xl" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-700 mb-2">No accommodations found in this area</h3>
+              <p className="text-gray-500 mb-8 max-w-md mx-auto px-4">
+                Know a property that should be here? Ask owners to register for free and join the safety movement.
+              </p>
+              <Link 
+                to="/owner/register" 
+                className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-8 py-3 rounded-xl font-bold inline-flex items-center gap-2 hover:shadow-xl transition-all"
+              >
+                Register Property <FiArrowRight />
+              </Link>
             </div>
-            <h3 className="text-xl font-bold text-gray-700 mb-2">No accommodations found in this area</h3>
-            <p className="text-gray-500 mb-8 max-w-md mx-auto px-4">
-              Know a property that should be here? Ask owners to register for free and join the safety movement.
-            </p>
-            <Link 
-              to="/owner/register" 
-              className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-8 py-3 rounded-xl font-bold inline-flex items-center gap-2 hover:shadow-xl transition-all"
-            >
-              Register Property <FiArrowRight />
-            </Link>
-          </div>
+          </ScaleIn>
         ) : (
-          <div className={viewMode === 'grid' 
-            ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8" 
-            : "space-y-6"
-          }>
+          <StaggerReveal 
+            stagger={80} 
+            className={viewMode === 'grid' 
+              ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8" 
+              : "space-y-6"
+            }
+          >
             {filteredAccommodations.map(accommodation => (
               <Link 
                 key={accommodation._id} 
@@ -264,7 +292,7 @@ export const AccommodationList: React.FC = () => {
                 </div>
               </Link>
             ))}
-          </div>
+          </StaggerReveal>
         )}
       </div>
     </div>

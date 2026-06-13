@@ -2,9 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { 
-  FiUpload, FiAlertTriangle, FiHome, FiDroplet, FiUser, FiSearch, 
+  FiAlertTriangle, FiHome, FiDroplet, FiSearch, 
   FiShield, FiCamera, FiCheckCircle, FiArrowRight, FiArrowLeft, FiInfo,
-  FiMail, FiX
+  FiMail, FiX, FiRefreshCw, FiBook
 } from 'react-icons/fi';
 import { ImageUpload } from '../components/ImageUpload';
 
@@ -24,7 +24,7 @@ interface Accommodation {
 export const ReportIncident: React.FC = () => {
   const API = import.meta.env.VITE_API_URL || 'http://localhost:5000';
   const navigate = useNavigate();
-  const { user, token } = useAuth();
+  const { user, token, loading: authLoading, refreshUser } = useAuth();
   
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState({
@@ -40,11 +40,23 @@ export const ReportIncident: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [submitError, setSubmitError] = useState('');
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // ✅ Check if user is verified
-  const isVerified = user?.isCollegeVerified || (user as any)?.isVerified;
+  // ✅ Check if user's COLLEGE is verified (not just email)
+  const isCollegeVerified = user?.isCollegeVerified === true;
 
+  // Debug logging
   useEffect(() => {
+    console.log('[ReportIncident] User:', user?.email);
+    console.log('[ReportIncident] isCollegeVerified:', user?.isCollegeVerified);
+    console.log('[ReportIncident] collegeName:', user?.collegeName);
+    console.log('[ReportIncident] Can Report:', isCollegeVerified);
+  }, [user, isCollegeVerified]);
+
+  // ✅ Redirect if not logged in or not a student
+  useEffect(() => {
+    if (authLoading) return;
+
     if (!user || !token) {
       navigate('/login');
       return;
@@ -56,7 +68,7 @@ export const ReportIncident: React.FC = () => {
     }
 
     fetchAccommodations();
-  }, [user, token, navigate]);
+  }, [user, token, authLoading, navigate]);
 
   const fetchAccommodations = async () => {
     try {
@@ -72,6 +84,46 @@ export const ReportIncident: React.FC = () => {
     }
   };
 
+  // ✅ Refresh user data from server
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      const response = await fetch(`${API}/api/profile`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.data) {
+          const updatedUser = {
+            id: data.data._id || data.data.id,
+            name: data.data.name,
+            email: data.data.email,
+            role: data.data.role,
+            isCollegeVerified: data.data.isCollegeVerified || false,
+            isVerified: data.data.isVerified || false,
+            collegeName: data.data.collegeName || null,
+            profilePhoto: data.data.profilePhoto || null
+          };
+          
+          localStorage.setItem('user', JSON.stringify(updatedUser));
+          
+          if (refreshUser) {
+            refreshUser();
+          }
+          
+          window.location.reload();
+        }
+      }
+    } catch (error) {
+      console.error('Error refreshing user data:', error);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
@@ -79,6 +131,12 @@ export const ReportIncident: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // ✅ Double-check college verification before submit
+    if (!isCollegeVerified) {
+      setSubmitError('You must verify your college email before submitting reports.');
+      return;
+    }
     
     if (!formData.accommodation) {
       alert("Please select an accommodation");
@@ -119,13 +177,8 @@ export const ReportIncident: React.FC = () => {
           navigate('/my-reports');
         }, 2500);
       } else {
-        // ✅ Handle verification required error
-        if (data.requiresVerification) {
-          setSubmitError(data.message);
-          // Optionally redirect to verification page after 3 seconds
-          setTimeout(() => {
-            navigate('/verify-email');
-          }, 3000);
+        if (data.requiresCollegeVerification || data.requiresVerification) {
+          setSubmitError('You need to verify your college email before submitting reports.');
         } else {
           setSubmitError(data.message || "Failed to submit report");
         }
@@ -151,36 +204,48 @@ export const ReportIncident: React.FC = () => {
     acc.city?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // ✅ NOT VERIFIED - Show verification required screen
-  if (!isVerified) {
+  // ✅ Loading state
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-slate-600 font-semibold">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // ✅ NOT COLLEGE VERIFIED - Show verification required screen
+  if (!isCollegeVerified) {
     return (
       <div className="min-h-screen bg-gray-50 py-12 px-4">
         <div className="max-w-2xl mx-auto">
           <div className="bg-white rounded-3xl shadow-xl p-8 sm:p-12 text-center">
-            <div className="w-20 h-20 bg-yellow-50 rounded-full flex items-center justify-center mx-auto mb-6">
-              <FiShield className="text-yellow-600 text-3xl" />
+            <div className="w-20 h-20 bg-amber-50 rounded-full flex items-center justify-center mx-auto mb-6">
+              <FiBook className="text-amber-600 text-3xl" />
             </div>
             
             <h1 className="text-3xl font-black text-slate-900 mb-4">
-              Verification Required
+              College Verification Required
             </h1>
             
             <p className="text-slate-600 mb-8 max-w-md mx-auto">
-              To ensure authentic reviews and protect our community, only <strong>verified students</strong> can submit safety reports.
+              To ensure authentic reviews, only <strong>verified college students</strong> can submit safety reports. Please verify your college email first.
             </p>
 
-            <div className="bg-yellow-50 border-2 border-yellow-200 rounded-2xl p-6 mb-8 text-left">
-              <h3 className="font-bold text-yellow-800 mb-4 flex items-center gap-2">
-                <FiInfo className="text-xl" /> Why verification matters:
+            <div className="bg-amber-50 border-2 border-amber-200 rounded-2xl p-6 mb-8 text-left">
+              <h3 className="font-bold text-amber-800 mb-4 flex items-center gap-2">
+                <FiInfo className="text-xl" /> Why college verification?
               </h3>
-              <ul className="text-yellow-700 space-y-2">
+              <ul className="text-amber-700 space-y-2">
                 <li className="flex items-start gap-2">
                   <FiCheckCircle className="mt-1 flex-shrink-0" />
-                  <span>Prevents fake or malicious reports</span>
+                  <span>Confirms you're a real college student</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <FiCheckCircle className="mt-1 flex-shrink-0" />
-                  <span>Ensures reports come from real students</span>
+                  <span>Prevents fake or malicious reports</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <FiCheckCircle className="mt-1 flex-shrink-0" />
@@ -188,7 +253,7 @@ export const ReportIncident: React.FC = () => {
                 </li>
                 <li className="flex items-start gap-2">
                   <FiCheckCircle className="mt-1 flex-shrink-0" />
-                  <span>Protects accommodation providers from false claims</span>
+                  <span>Protects accommodation providers</span>
                 </li>
               </ul>
             </div>
@@ -198,40 +263,72 @@ export const ReportIncident: React.FC = () => {
                 <strong className="text-blue-900">Your account:</strong> {user?.email}
               </p>
               <p className="text-sm text-blue-700 mt-1">
-                Status: <span className="font-bold text-red-600">Not Verified</span>
+                Email Status: {user?.isVerified ? 
+                  <span className="text-green-600 font-bold">✓ Verified</span> : 
+                  <span className="text-red-600 font-bold">Not Verified</span>
+                }
               </p>
+              <p className="text-sm text-blue-700 mt-1">
+                College Status: <span className="font-bold text-red-600">Not Verified</span>
+              </p>
+              {user?.collegeName && (
+                <p className="text-sm text-blue-700 mt-1">
+                  College: {user.collegeName}
+                </p>
+              )}
             </div>
 
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <button
-                onClick={() => navigate('/verify-email')}
-                className="bg-blue-600 text-white px-8 py-4 rounded-xl font-bold hover:bg-blue-700 transition-all flex items-center justify-center gap-2 shadow-lg"
+                onClick={() => navigate('/verify-college')}
+                className="bg-amber-500 text-white px-8 py-4 rounded-xl font-bold hover:bg-amber-600 transition-all flex items-center justify-center gap-2 shadow-lg"
               >
-                <FiMail /> Verify College Email
+                <FiBook /> Verify College Email
               </button>
               <button
-                onClick={() => navigate('/profile')}
-                className="bg-slate-100 text-slate-700 px-8 py-4 rounded-xl font-bold hover:bg-slate-200 transition-all"
+                onClick={handleRefresh}
+                disabled={isRefreshing}
+                className="bg-slate-100 text-slate-700 px-8 py-4 rounded-xl font-bold hover:bg-slate-200 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
               >
-                Go to Profile
+                <FiRefreshCw className={isRefreshing ? 'animate-spin' : ''} />
+                {isRefreshing ? 'Refreshing...' : 'Already Verified? Refresh'}
               </button>
             </div>
 
-            <p className="text-slate-400 text-sm mt-6">
-              Already verified? Try refreshing the page or{' '}
-              <button 
-                onClick={() => window.location.reload()} 
-                className="text-blue-600 hover:underline font-semibold"
-              >
-                click here to reload
-              </button>
-            </p>
+            <div className="mt-8 pt-6 border-t border-slate-200">
+              <p className="text-slate-500 text-sm mb-4">
+                Or go back to:
+              </p>
+              <div className="flex justify-center gap-4">
+                <button
+                  onClick={() => navigate('/dashboard')}
+                  className="text-blue-600 hover:underline font-semibold"
+                >
+                  Dashboard
+                </button>
+                <span className="text-slate-300">|</span>
+                <button
+                  onClick={() => navigate('/profile')}
+                  className="text-blue-600 hover:underline font-semibold"
+                >
+                  Profile
+                </button>
+                <span className="text-slate-300">|</span>
+                <button
+                  onClick={() => navigate('/')}
+                  className="text-blue-600 hover:underline font-semibold"
+                >
+                  Home
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
     );
   }
 
+  // ✅ COLLEGE VERIFIED - Show report form
   return (
     <div className="min-h-screen bg-gray-50 pb-12">
       {/* Header */}
@@ -243,9 +340,9 @@ export const ReportIncident: React.FC = () => {
           <h1 className="text-3xl font-extrabold">Report a Safety Concern</h1>
           <p className="text-blue-200 mt-2">Help make student housing safer by sharing your experience.</p>
           
-          {/* ✅ Verified Badge */}
+          {/* ✅ College Verified Badge */}
           <div className="inline-flex items-center gap-2 bg-green-500/20 border border-green-400/30 text-green-300 px-4 py-2 rounded-full text-sm font-bold mt-4">
-            <FiCheckCircle /> Verified Student: {user?.collegeName || user?.email}
+            <FiCheckCircle /> College Verified: {user?.collegeName || user?.email}
           </div>
         </div>
       </div>
@@ -281,25 +378,25 @@ export const ReportIncident: React.FC = () => {
           </div>
 
           <div className="p-8 sm:p-12">
-            {/* ✅ Verification Error Alert */}
+            {/* ✅ Error Alert */}
             {submitError && (
               <div className="bg-red-50 border-2 border-red-200 text-red-700 px-6 py-4 rounded-2xl mb-6 flex items-start gap-3">
                 <FiAlertTriangle className="mt-0.5 flex-shrink-0 text-xl" />
-                <div>
-                  <p className="font-bold mb-1">Error submitting report</p>
+                <div className="flex-1">
+                  <p className="font-bold mb-1">Error</p>
                   <p className="text-sm">{submitError}</p>
-                  {submitError.includes('verify') && (
+                  {submitError.toLowerCase().includes('college') && (
                     <button
-                      onClick={() => navigate('/verify-email')}
+                      onClick={() => navigate('/verify-college')}
                       className="mt-3 text-sm bg-red-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-red-700 transition-all"
                     >
-                      Verify Now →
+                      Verify College →
                     </button>
                   )}
                 </div>
                 <button 
                   onClick={() => setSubmitError('')}
-                  className="ml-auto text-red-600 hover:text-red-800"
+                  className="text-red-600 hover:text-red-800 p-1"
                 >
                   <FiX />
                 </button>
@@ -313,7 +410,7 @@ export const ReportIncident: React.FC = () => {
                 </div>
                 <h2 className="text-3xl font-extrabold text-gray-900 mb-2">Report Submitted!</h2>
                 <p className="text-gray-600 max-w-md mx-auto">
-                  Your safety report has been recorded. Our moderators will review it shortly. Redirecting you...
+                  Your safety report has been recorded. Our AI is verifying your evidence and moderators will review it shortly. Redirecting you...
                 </p>
               </div>
             ) : (
@@ -406,7 +503,7 @@ export const ReportIncident: React.FC = () => {
                       <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl mb-6 flex gap-3">
                         <FiInfo className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
                         <p className="text-sm text-blue-700">
-                          Your identity stays anonymous. Only <span className="font-bold text-blue-900">"Verified Resident"</span> is shown to others.
+                          Your identity stays anonymous. Only <span className="font-bold text-blue-900">"Verified College Student"</span> is shown to others.
                         </p>
                       </div>
                       <textarea
@@ -441,7 +538,7 @@ export const ReportIncident: React.FC = () => {
                       <div className="bg-green-50 border border-green-100 p-4 rounded-xl mb-6 flex gap-3">
                         <FiCamera className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
                         <p className="text-sm text-green-700">
-                          <span className="font-bold text-green-900">📸 Photos increase report credibility by 3x.</span> Evidence helps owners resolve issues faster.
+                          <span className="font-bold text-green-900">📸 Photos increase report credibility by 3x.</span> Evidence helps owners resolve issues faster and AI will verify your images.
                         </p>
                       </div>
                       
@@ -450,6 +547,14 @@ export const ReportIncident: React.FC = () => {
                           onImagesChange={setUploadedImages} 
                           uploadedImages={uploadedImages}
                         />
+                      </div>
+
+                      {/* AI Verification Notice */}
+                      <div className="bg-purple-50 border border-purple-100 p-4 rounded-xl mt-4 flex gap-3">
+                        <FiShield className="h-5 w-5 text-purple-600 flex-shrink-0 mt-0.5" />
+                        <p className="text-sm text-purple-700">
+                          <span className="font-bold text-purple-900">🤖 AI Verification:</span> Your images will be analyzed by AI to ensure they match the reported issue.
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -491,7 +596,7 @@ export const ReportIncident: React.FC = () => {
                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                           </svg>
-                          Submitting...
+                          Submitting & Verifying...
                         </span>
                       ) : (
                         <>Submit Report <FiArrowRight /></>

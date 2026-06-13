@@ -14,6 +14,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { AccommodationProvider } from './contexts/AccommodationContext';
 import MyReports from './pages/MyReports';
 import AdminDashboard from './pages/AdminDashboard';
+import AdminOwnerVerifications from './pages/AdminOwnerVerifications'; // ✅ NEW IMPORT
 import OwnerRegister from './pages/OwnerRegister';
 import OwnerLogin from './pages/OwnerLogin';
 import OwnerDashboard from './pages/OwnerDashboard';
@@ -240,6 +241,16 @@ function AppContent() {
             element={
               <ProtectedRoute requiredRole="admin">
                 <AdminDashboard />
+              </ProtectedRoute>
+            }
+          />
+          
+          {/* ✅ NEW: Admin Owner Verifications Route */}
+          <Route
+            path="/admin/owner-verifications"
+            element={
+              <ProtectedRoute requiredRole="admin">
+                <AdminOwnerVerifications />
               </ProtectedRoute>
             }
           />

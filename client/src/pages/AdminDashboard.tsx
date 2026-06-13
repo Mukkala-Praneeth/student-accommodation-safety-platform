@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom'; // ✅ Added Link
 import { useAuth } from '../contexts/AuthContext';
 import { 
   FiShield, FiUsers, FiFileText, FiCheckCircle, FiAlertTriangle, 
   FiTrendingUp, FiSearch, FiEye, FiCpu, FiActivity, FiX,
-  FiRefreshCw, FiDownload, FiTrash2
+  FiRefreshCw, FiDownload, FiTrash2, FiUserCheck // ✅ Added FiUserCheck
 } from 'react-icons/fi';
 
 interface AIStats {
@@ -15,12 +15,21 @@ interface AIStats {
   avgConfidence: number;
 }
 
+// ✅ NEW INTERFACE
+interface OwnerVerificationStats {
+  pending: number;
+  under_review: number;
+  verified: number;
+  rejected: number;
+}
+
 interface Stats {
   totalUsers: number;
   totalAccommodations: number;
   totalReports: number;
   pendingReports: number;
   aiStats?: AIStats;
+  ownerVerifications?: OwnerVerificationStats; // ✅ NEW FIELD
 }
 
 interface AIVerification {
@@ -121,11 +130,11 @@ export default function AdminDashboard() {
       console.log('Reports response:', reportsData);
       
       if (statsData.success) {
-        setStats(statsData.data);
+        setStats(statsData.stats); // ✅ Fixed: Changed from statsData.data to statsData.stats
       }
       
       if (reportsData.success) {
-        setReports(reportsData.data || []);
+        setReports(reportsData.reports || []); // ✅ Fixed: Changed from reportsData.data to reportsData.reports
       }
     } catch (err) {
       console.error('Error fetching admin data:', err);
@@ -385,6 +394,49 @@ export default function AdminDashboard() {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-16">
         
+        {/* ✅ NEW: Owner Verification Alert Card */}
+        {stats?.ownerVerifications && stats.ownerVerifications.pending > 0 && (
+          <Link 
+            to="/admin/owner-verifications"
+            className="block bg-gradient-to-r from-yellow-400 to-orange-500 rounded-[2.5rem] shadow-2xl shadow-yellow-500/20 p-8 mb-8 text-white hover:shadow-yellow-500/40 transition-all group"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="p-4 bg-white/20 rounded-2xl group-hover:bg-white/30 transition-all">
+                  <FiUserCheck className="h-8 w-8" />
+                </div>
+                <div>
+                  <h3 className="text-2xl font-black">
+                    {stats.ownerVerifications.pending} Owner{stats.ownerVerifications.pending !== 1 ? 's' : ''} Awaiting Verification
+                  </h3>
+                  <p className="text-yellow-100 font-medium">
+                    Review and approve property owner registrations
+                  </p>
+                </div>
+              </div>
+              <div className="hidden md:block text-white/60 group-hover:text-white group-hover:translate-x-2 transition-all">
+                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </div>
+            </div>
+            <div className="flex gap-6 mt-4 text-sm font-bold">
+              <span className="flex items-center gap-2">
+                <span className="w-2 h-2 bg-white rounded-full animate-pulse"></span>
+                {stats.ownerVerifications.pending} Pending
+              </span>
+              <span className="flex items-center gap-2">
+                <span className="w-2 h-2 bg-blue-200 rounded-full"></span>
+                {stats.ownerVerifications.under_review} Under Review
+              </span>
+              <span className="flex items-center gap-2">
+                <span className="w-2 h-2 bg-green-200 rounded-full"></span>
+                {stats.ownerVerifications.verified} Verified
+              </span>
+            </div>
+          </Link>
+        )}
+
         {/* AI Analytics Section */}
         <div className="bg-gradient-to-br from-purple-600 to-indigo-700 rounded-[2.5rem] shadow-2xl shadow-purple-500/20 p-8 mb-8 text-white">
           <div className="flex items-center gap-3 mb-6">
